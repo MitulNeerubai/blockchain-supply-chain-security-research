@@ -34,8 +34,13 @@ async function main() {
 
   console.log("Step 2: Issuing credentials...");
   const credHash = ethers.keccak256(ethers.toUtf8Bytes("manufacturer-license-2024"));
-  const credentialId = await credentialRegistry.connect(lg).issueCredential.staticCall(mf.address, credHash, 0);
-  await credentialRegistry.connect(lg).issueCredential(mf.address, credHash, 0);
+  const tx = await credentialRegistry.connect(lg).issueCredential(mf.address, credHash, 0);
+  const receipt = await tx.wait();
+  const event = receipt.logs.find(log => {
+    try { return credentialRegistry.interface.parseLog(log).name === "CredentialIssued"; }
+    catch { return false; }
+  });
+  const credentialId = credentialRegistry.interface.parseLog(event).args.credentialId;
   console.log("Credential issued to manufacturer!\n");
 
   console.log("Step 3: Creating product...");

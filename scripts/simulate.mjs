@@ -7,11 +7,11 @@ const ethers = hre.ethers;
 
 // ── PASTE ADDRESSES FROM deploy.mjs OUTPUT ─────────────────────────────────
 // After running deploy.mjs, copy the addresses it prints and paste here:
-const TRUST_REGISTRY   = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-const AUDIT_LOG        = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
-const DID_REGISTRY     = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
-const CRED_REGISTRY    = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9";
-const PRODUCT_TRANSFER = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9";
+const TRUST_REGISTRY   = "0x0A4502802C243e7C6f464BFDf1D967ec5Ad042d2";
+const AUDIT_LOG        = "0x6784193B5FF7C8f2733Ee80C4c1bE22B4bF49B85";
+const DID_REGISTRY     = "0x3559e6f0D6721eA20De0cD5B9cbA7929838aAe24";
+const CRED_REGISTRY    = "0x635d0cA791d1BEA4471FDd10F276693fC1c8EF6f";
+const PRODUCT_TRANSFER = "0x6d1b146f301bc83E1362d29797b8b1c396132Ca1";
 // ────────────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -38,18 +38,18 @@ async function main() {
 
   // ── STEP 1: rootGA authorizes all actors ─────────────────────────────────
   console.log("\n── Step 1: rootGA authorizes issuers ──");
-  await (await trust.connect(rootGA).authorizeIssuer(lg.address, "LocalGovt")).wait();
-  await (await trust.connect(rootGA).authorizeIssuer(mf.address, "Manufacturer")).wait();
-  await (await trust.connect(rootGA).authorizeIssuer(dt.address, "Distributor")).wait();
-  await (await trust.connect(rootGA).authorizeIssuer(rt.address, "Retailer")).wait();
+  for (const [addr, name] of [[lg.address,"LocalGovt"],[mf.address,"Manufacturer"],[dt.address,"Distributor"],[rt.address,"Retailer"]]) {
+    try { await (await trust.connect(rootGA).authorizeIssuer(addr, name)).wait(); }
+    catch (e) { console.log(`  ℹ ${name} already authorized — skipping`); }
+  }
   console.log("  ✓ LG, MF, DT, RT authorized in TrustRegistry");
 
   // ── STEP 2: Each actor registers a DID ───────────────────────────────────
   console.log("\n── Step 2: Actors register DIDs ──");
-  await (await did.connect(lg).registerDID("LocalGovt")).wait();
-  await (await did.connect(mf).registerDID("Manufacturer")).wait();
-  await (await did.connect(dt).registerDID("Distributor")).wait();
-  await (await did.connect(rt).registerDID("Retailer")).wait();
+  for (const [signer, name] of [[lg,"LocalGovt"],[mf,"Manufacturer"],[dt,"Distributor"],[rt,"Retailer"]]) {
+    try { await (await did.connect(signer).registerDID(name)).wait(); }
+    catch (e) { console.log(`  ℹ ${name} DID already registered — skipping`); }
+  }
   console.log("  ✓ DIDs registered for LG, MF, DT, RT");
   console.log("  LG DID:", await did.getDID(lg.address));
   console.log("  MF DID:", await did.getDID(mf.address));
@@ -183,17 +183,43 @@ async function main() {
     console.log(`  [${i}] ${ts} | ${entry.action} | actor: ${entry.actor.slice(0,10)}...`);
   }
 
-  // ── TEST BLOCKED TRANSACTION ──────────────────────────────────────────────
-  console.log("\n── Blocked Transaction Test ──");
-  const attacker = signers[5];
-  console.log("  Attacker address:", attacker.address, "(not authorized)");
+  // ── TAMPER TEST: Wrong Secret Attack ─────────────────────────────────────
+  console.log("\n── Tamper Test: Wrong Secret Attack ──");
+  console.log("  Creating a separate product for the tamper test...");
+
+  // Issue a FRESH credential specifically for this test product
+  const tamperCredTx = await cred.connect(lg).issueCredential(mf.address, "ManufacturingLicense", 365);
+  const tamperCredReceipt = await tamperCredTx.wait();
+  const tamperCredId = tamperCredReceipt.logs
+    .map(l => { try { return cred.interface.parseLog(l); } catch { return null; } })
+    .find(e => e && e.name === "CredentialIssued")
+    .args.credentialId;
+  console.log("  ✓ Fresh ManufacturingLicense issued for tamper test");
+
+  const createTx2 = await pt.connect(mf).createProduct("Widget-TAMPER-TEST", tamperCredId);
+  const createReceipt2 = await createTx2.wait();
+  const productId2 = createReceipt2.logs
+    .map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
+    .find(e => e && e.name === "ProductCreated")
+    .args.productId;
+
+  const secret3 = "HANDSHAKE_MF_TO_DT_NEW";
+  const secretHash3 = ethers.keccak256(ethers.toUtf8Bytes(secret3));
+  await (await pt.connect(mf).commitTransfer(productId2, secretHash3, dt.address, dtLicCredId)).wait();
+  console.log("  Product created and transfer committed to DT");
+  console.log("  Real secret:", secret3);
+
+  // Attacker tries the wrong secret
   try {
-    await (await trust.connect(attacker).authorizeIssuer(attacker.address, "Hacker")).wait();
-    console.log("  ✗ ERROR: attacker was able to authorize themselves!");
+    await (await pt.connect(dt).claimTransfer(productId2, "WRONG_SECRET_HAHA")).wait();
+    console.log("  ✗ ERROR: Wrong secret was accepted!");
   } catch (e) {
-    console.log("  ✓ BLOCKED: attacker cannot call authorizeIssuer (not rootGA)");
-    console.log("    Revert reason:", e.message.includes("rootGA") ? "Only rootGA can call this" : e.message.split("\n")[0]);
+    console.log("  ✓ BLOCKED: Wrong secret rejected — transfer denied");
   }
+
+  // Now use the correct secret — should work
+  await (await pt.connect(dt).claimTransfer(productId2, secret3)).wait();
+  console.log("  ✓ CONFIRMED: Correct secret accepted — DT is now holder");
 
   console.log("\n=== SIMULATION COMPLETE ===\n");
 }

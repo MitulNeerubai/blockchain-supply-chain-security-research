@@ -1,61 +1,73 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "./TrustRegistry.sol";
+import "./AuditLog.sol";
+
 contract DIDRegistry {
-struct DIDDocument {
-address owner;
-string publicKey;
-uint256 created;
-uint256 updated;
-bool active;
-}
+    TrustRegistry public immutable trustRegistry;
+    AuditLog      public immutable auditLog;
 
-mapping(string => DIDDocument) private didDocuments;
-mapping(address => string) private ownerToDID;
+    struct DIDDocument {
+        string  did;
+        string  role;
+        address controller;
+        uint256 createdAt;
+        bool    active;
+    }
 
-event DIDRegistered(string indexed did, address indexed owner);
-event DIDUpdated(string indexed did);
-event DIDDeactivated(string indexed did);
+    mapping(address => DIDDocument) public didDocuments;
+    mapping(string => address) public didToAddress;
 
-function registerDID(string memory did, string memory publicKey) external {
-require(bytes(did).length > 0, "DID cannot be empty");
-require(didDocuments[did].owner == address(0), "DID already registered");
-didDocuments[did] = DIDDocument({
-owner: msg.sender,
-publicKey: publicKey,
-created: block.timestamp,
-updated: block.timestamp,
-active: true
-});
-ownerToDID[msg.sender] = did;
-emit DIDRegistered(did, msg.sender);
-}
+    event DIDRegistered(address indexed controller, string did, string role, uint256 timestamp);
+    event DIDDeactivated(address indexed controller, string did, uint256 timestamp);
 
-function resolveDID(string memory did) external view returns (address owner, string memory publicKey, bool active) {
-DIDDocument memory doc = didDocuments[did];
-require(doc.owner != address(0), "DID not found");
-return (doc.owner, doc.publicKey, doc.active);
-}
+    constructor(address _trustRegistry, address _auditLog) {
+        trustRegistry = TrustRegistry(_trustRegistry);
+        auditLog      = AuditLog(_auditLog);
+    }
 
-function updatepublicKey(string memory did, string memory newpublicKey) external {
-require(didDocuments[did].owner == msg.sender, "Not DID owner");
-require(didDocuments[did].active, "DID is deactivated");
-didDocuments[did].publicKey = newpublicKey;
-didDocuments[did].updated = block.timestamp;
-emit DIDUpdated(did);
-}
+    function registerDID(string calldata role) external {
+        require(trustRegistry.isAuthorizedIssuer(msg.sender), "DIDRegistry: caller not authorized in TrustRegistry");
+        require(bytes(didDocuments[msg.sender].did).length == 0, "DIDRegistry: DID already registered for this address");
+        string memory did = _buildDID(msg.sender);
+        didDocuments[msg.sender] = DIDDocument({ did: did, role: role, controller: msg.sender, createdAt: block.timestamp, active: true });
+        didToAddress[did] = msg.sender;
+        auditLog.logAction(msg.sender, "DID_REGISTERED", string(abi.encodePacked("did=", did, " role=", role)));
+        emit DIDRegistered(msg.sender, did, role, block.timestamp);
+    }
 
-function deactivateDID(string memory did) external {
-require(didDocuments[did].owner == msg.sender, "Not DID owner");
-didDocuments[did].active = false;
-emit DIDDeactivated(did);
-}
+    function deactivateDID() external {
+        DIDDocument storage doc = didDocuments[msg.sender];
+        require(bytes(doc.did).length > 0, "DIDRegistry: no DID for this address");
+        require(doc.active, "DIDRegistry: already deactivated");
+        doc.active = false;
+        auditLog.logAction(msg.sender, "DID_DEACTIVATED", string(abi.encodePacked("did=", doc.did)));
+        emit DIDDeactivated(msg.sender, doc.did, block.timestamp);
+    }
 
-function isActiveDID(string memory did) external view returns (bool) {
-return didDocuments[did].active;
-}
+    function getDID(address controller) external view returns (string memory) { return didDocuments[controller].did; }
+    function isActiveDID(address controller) external view returns (bool) {
+        DIDDocument storage doc = didDocuments[controller];
+        return bytes(doc.did).length > 0 && doc.active;
+    }
+    function getDocument(address controller) external view returns (DIDDocument memory) { return didDocuments[controller]; }
 
-function getDIDByOwner(address owner) external view returns (string memory) {
-return ownerToDID[owner];
-}
+    function _buildDID(address addr) internal pure returns (string memory) {
+        return string(abi.encodePacked("did:besu:", _toHexString(addr)));
+    }
+    function _toHexString(address addr) internal pure returns (string memory) {
+        bytes memory buffer = new bytes(42);
+        buffer[0] = '0'; buffer[1] = 'x';
+        for (uint256 i = 0; i < 20; i++) {
+            uint8 b = uint8(uint160(addr) >> (8 * (19 - i)));
+            buffer[2 + i * 2] = _hexChar(b >> 4);
+            buffer[2 + i * 2 + 1] = _hexChar(b & 0x0f);
+        }
+        return string(buffer);
+    }
+    function _hexChar(uint8 v) internal pure returns (bytes1) {
+        if (v < 10) return bytes1(uint8(48 + v));
+        return bytes1(uint8(87 + v));
+    }
 }

@@ -1,42 +1,54 @@
-import hardhat from "hardhat";
-const { ethers } = hardhat;
+import hre from "hardhat";
+const ethers = hre.ethers;
 
 async function main() {
-  const wallets = await ethers.getSigners();
-  const rootGA = wallets[0];
-  const lg = wallets[1];
-  const mf = wallets[2];
+  const [deployer] = await ethers.getSigners();
+  console.log("\n=== SSI Supply Chain Deployment ===");
+  console.log("Deployer (rootGA):", deployer.address);
+  console.log("Network:", hre.network.name);
 
-  console.log("Deploying contracts...");
-  console.log("rootGA:", rootGA.address);
-  console.log("LG:", lg.address);
-  console.log("MF:", mf.address);
+  console.log("\n1/5 Deploying TrustRegistry...");
+  const trustRegistry = await (await ethers.getContractFactory("TrustRegistry")).deploy();
+  await trustRegistry.waitForDeployment();
+  const trustAddr = await trustRegistry.getAddress();
+  console.log("    TrustRegistry:", trustAddr);
 
-  const DIDRegistry = await ethers.getContractFactory("DIDRegistry");
-  const didRegistry = await DIDRegistry.deploy();
+  console.log("2/5 Deploying AuditLog...");
+  const auditLog = await (await ethers.getContractFactory("AuditLog")).deploy();
+  await auditLog.waitForDeployment();
+  const auditAddr = await auditLog.getAddress();
+  console.log("    AuditLog:", auditAddr);
+
+  console.log("3/5 Deploying DIDRegistry...");
+  const didRegistry = await (await ethers.getContractFactory("DIDRegistry")).deploy(trustAddr, auditAddr);
   await didRegistry.waitForDeployment();
-  console.log("DIDRegistry deployed to:", await didRegistry.getAddress());
+  const didAddr = await didRegistry.getAddress();
+  console.log("    DIDRegistry:", didAddr);
 
-  const CredentialRegistry = await ethers.getContractFactory("CredentialRegistry");
-  const credentialRegistry = await CredentialRegistry.deploy();
-  await credentialRegistry.waitForDeployment();
-  console.log("CredentialRegistry deployed to:", await credentialRegistry.getAddress());
+  console.log("4/5 Deploying CredentialRegistry...");
+  const credRegistry = await (await ethers.getContractFactory("CredentialRegistry")).deploy(trustAddr, didAddr, auditAddr);
+  await credRegistry.waitForDeployment();
+  const credAddr = await credRegistry.getAddress();
+  console.log("    CredentialRegistry:", credAddr);
 
-  const ProductTransfer = await ethers.getContractFactory("ProductTransfer");
-  const productTransfer = await ProductTransfer.deploy();
+  console.log("5/5 Deploying ProductTransfer...");
+  const productTransfer = await (await ethers.getContractFactory("ProductTransfer")).deploy(credAddr, auditAddr);
   await productTransfer.waitForDeployment();
-  console.log("ProductTransfer deployed to:", await productTransfer.getAddress());
+  const ptAddr = await productTransfer.getAddress();
+  console.log("    ProductTransfer:", ptAddr);
 
-  console.log("\nAll contracts deployed successfully!");
+  console.log("\n=== Registering contracts with AuditLog ===");
+  await (await auditLog.registerContract(didAddr,  "DIDRegistry")).wait();
+  await (await auditLog.registerContract(credAddr, "CredentialRegistry")).wait();
+  await (await auditLog.registerContract(ptAddr,   "ProductTransfer")).wait();
+  console.log("    All registered");
 
-  return {
-    didRegistry: await didRegistry.getAddress(),
-    credentialRegistry: await credentialRegistry.getAddress(),
-    productTransfer: await productTransfer.getAddress()
-  };
+  console.log("\n=== DEPLOYMENT COMPLETE — paste these into simulate.mjs ===");
+  console.log(`const TRUST_REGISTRY   = "${trustAddr}";`);
+  console.log(`const AUDIT_LOG        = "${auditAddr}";`);
+  console.log(`const DID_REGISTRY     = "${didAddr}";`);
+  console.log(`const CRED_REGISTRY    = "${credAddr}";`);
+  console.log(`const PRODUCT_TRANSFER = "${ptAddr}";`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(err => { console.error(err); process.exit(1); });

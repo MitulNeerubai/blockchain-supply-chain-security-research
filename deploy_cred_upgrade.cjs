@@ -11,9 +11,13 @@ const { ethers } = require("hardhat");
 
 // ── Keep these — TrustRegistry and DIDRegistry are untouched ────────────────
 const KEEP = {
-  trust: "0x57FD60303b4cB05768ac4d006942B04Fc67176cf",
-  did:   "0x12d58eDfB53B24E17dB66Fe6a42fAa6F53aA851b",
+  trust: '0x57FD60303b4cB05768ac4d006942B04Fc67176cf',
+  did:   '0x12d58eDfB53B24E17dB66Fe6a42fAa6F53aA851b',
+  cred:  '0x3feEEa97c61953cD50E39BeadC77f1eebC4Db4a5',
+  pt:    '0x6dd2F6733fF0e6b20eD590a3f674db9D860B5D4F',
+  audit: '0x770aE5bA10fE4A832ab189062382ea495aD1bFd0',
 };
+
 
 async function main() {
   const [deployer] = await ethers.getSigners();

@@ -37,13 +37,12 @@ contract CredentialRegistry {
         auditLog      = AuditLog(_auditLog);
     }
 
-    function issueCredential(address holder, string calldata credType, uint256 validDays)
+    function issueCredential(address holder, string calldata credType, uint256 expiresAt)
         external returns (bytes32 credentialId)
     {
         require(trustRegistry.isAuthorizedIssuer(msg.sender), "CredentialRegistry: issuer not authorized in TrustRegistry");
         require(didRegistry.isActiveDID(msg.sender), "CredentialRegistry: issuer does not have an active DID");
         require(didRegistry.isActiveDID(holder), "CredentialRegistry: holder does not have an active DID");
-        uint256 expiresAt = validDays > 0 ? block.timestamp + (validDays * 1 days) : 0;
         credentialId = keccak256(abi.encodePacked(msg.sender, holder, credType, _nonce++, block.timestamp));
         credentials[credentialId] = Credential({ id: credentialId, issuer: msg.sender, holder: holder, credType: credType, issuedAt: block.timestamp, expiresAt: expiresAt, revoked: false, linkedProductId: 0, productLinked: false });
         credentialsByIssuer[msg.sender].push(credentialId);
@@ -108,4 +107,18 @@ contract CredentialRegistry {
         while(t!=0){l++;t/=10;} bytes memory buf=new bytes(l);
         while(v!=0){buf[--l]=bytes1(uint8(48+v%10));v/=10;} return string(buf);
     }
+
+    // Returns true if holder has at least one non-revoked, non-expired credential
+    function isCredentialValid(address holder) external view returns (bool) {
+        bytes32[] storage ids = credentialsByHolder[holder];
+        for (uint256 i = 0; i < ids.length; i++) {
+            Credential storage cred = credentials[ids[i]];
+            if (!cred.revoked && (cred.expiresAt == 0 || block.timestamp <= cred.expiresAt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
 }

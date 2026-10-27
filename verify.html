@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SSI Supply Chain Verifier</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --card: #ffffff;
+      --primary: #1a56db;
+      --primary-dark: #1344b8;
+      --success: #057a55;
+      --success-bg: #def7ec;
+      --warning: #c27803;
+      --warning-bg: #fdf6b2;
+      --error: #c81e1e;
+      --error-bg: #fde8e8;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --step-bg: #f9fafb;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #111827; --card: #1f2937; --primary: #3b82f6;
+        --primary-dark: #2563eb; --success: #10b981; --success-bg: #064e3b;
+        --warning: #f59e0b; --warning-bg: #451a03; --error: #ef4444;
+        --error-bg: #450a0a; --text: #f9fafb; --muted: #9ca3af;
+        --border: #374151; --step-bg: #1a2535; color-scheme: dark;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #111827; --card: #1f2937; --primary: #3b82f6;
+      --primary-dark: #2563eb; --success: #10b981; --success-bg: #064e3b;
+      --warning: #f59e0b; --warning-bg: #451a03; --error: #ef4444;
+      --error-bg: #450a0a; --text: #f9fafb; --muted: #9ca3af;
+      --border: #374151; --step-bg: #1a2535; color-scheme: dark;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; padding: 24px 16px;
+    }
+    .container { max-width: 720px; margin: 0 auto; }
+    .header { text-align: center; margin-bottom: 32px; }
+    .header h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 6px; }
+    .header p { color: var(--muted); font-size: 0.95rem; }
+    .network-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--success-bg); color: var(--success);
+      padding: 4px 12px; border-radius: 999px; font-size: 0.8rem;
+      font-weight: 600; margin-top: 10px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px; margin-bottom: 20px;
+    }
+    .card h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: 16px; }
+
+    .input-row { display: flex; gap: 10px; }
+    .input-row input {
+      flex: 1; padding: 10px 14px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 1rem; background: var(--bg); color: var(--text);
+      outline: none;
+    }
+    .input-row input:focus { border-color: var(--primary); }
+    button {
+      padding: 10px 20px; background: var(--primary); color: #fff;
+      border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600;
+      cursor: pointer; white-space: nowrap; transition: background 0.2s;
+    }
+    button:hover { background: var(--primary-dark); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .status-box {
+      padding: 12px 16px; border-radius: 8px; font-size: 0.9rem;
+      margin-top: 16px; display: none;
+    }
+    .status-box.loading { background: var(--warning-bg); color: var(--warning); display: block; }
+    .status-box.error   { background: var(--error-bg);   color: var(--error);   display: block; }
+
+    #result { display: none; }
+
+    .product-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+    }
+    .product-name { font-size: 1.3rem; font-weight: 700; }
+    .status-pill {
+      padding: 4px 14px; border-radius: 999px; font-size: 0.8rem; font-weight: 700;
+    }
+    .status-pill.delivered { background: var(--success-bg); color: var(--success); }
+    .status-pill.created   { background: var(--warning-bg); color: var(--warning); }
+    .status-pill.intransit { background: #dbeafe; color: #1e40af; }
+
+    .meta-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;
+    }
+    @media(max-width:480px) { .meta-grid { grid-template-columns: 1fr; } }
+    .meta-item label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .meta-item p { font-size: 0.85rem; font-weight: 500; margin-top: 2px; word-break: break-all; }
+
+    .section-title {
+      font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px;
+    }
+
+    .timeline { position: relative; padding-left: 28px; }
+    .timeline::before {
+      content: ""; position: absolute; left: 9px; top: 8px;
+      bottom: 8px; width: 2px; background: var(--border);
+    }
+    .tl-item { position: relative; margin-bottom: 16px; }
+    .tl-dot {
+      position: absolute; left: -24px; top: 4px;
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--primary); border: 2px solid var(--card);
+    }
+    .tl-dot.final { background: var(--success); }
+    .tl-action { font-size: 0.9rem; font-weight: 600; }
+    .tl-detail { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+    .tl-time   { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+    .verify-badge {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--success-bg); color: var(--success);
+      border-radius: 8px; padding: 14px 16px; margin-top: 20px;
+      font-weight: 600;
+    }
+    .verify-icon { font-size: 1.4rem; }
+
+    /* QR section */
+    .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    #qrcode canvas, #qrcode img { border-radius: 8px; }
+    .qr-label { font-size: 0.85rem; color: var(--muted); text-align: center; }
+    .qr-url {
+      font-size: 0.75rem; background: var(--step-bg); padding: 8px 12px;
+      border-radius: 6px; word-break: break-all; color: var(--muted);
+      border: 1px solid var(--border); width: 100%; text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>🔗 Supply Chain Verifier</h1>
+    <p>Verify product authenticity on the DIDLab blockchain</p>
+    <div class="network-badge"><span class="dot"></span>DIDLab Besu · Chain 252501</div>
+  </div>
+
+  <!-- Verify card -->
+  <div class="card">
+    <h2>🔍 Verify a Product</h2>
+    <div class="input-row">
+      <input type="number" id="productId" placeholder="Enter Product ID (e.g. 1)" min="1" />
+      <button id="verifyBtn" onclick="verifyProduct()">Verify</button>
+    </div>
+    <div class="status-box" id="statusBox"></div>
+  </div>
+
+  <!-- Result card -->
+  <div class="card" id="result">
+    <div class="product-header">
+      <div class="product-name" id="productName"></div>
+      <div class="status-pill" id="statusPill"></div>
+    </div>
+
+    <div class="meta-grid">
+      <div class="meta-item">
+        <label>Product ID</label>
+        <p id="metaId"></p>
+      </div>
+      <div class="meta-item">
+        <label>Created</label>
+        <p id="metaCreated"></p>
+      </div>
+      <div class="meta-item">
+        <label>Manufacturer</label>
+        <p id="metaMf"></p>
+      </div>
+      <div class="meta-item">
+        <label>Current Holder</label>
+        <p id="metaHolder"></p>
+      </div>
+    </div>
+
+    <div class="section-title">Transfer History</div>
+    <div class="timeline" id="timeline"></div>
+
+    <div class="verify-badge">
+      <span class="verify-icon">✅</span>
+      <span>Verified on DIDLab Besu — data is immutable and tamper-proof</span>
+    </div>
+  </div>
+
+  <!-- QR card -->
+  <div class="card" id="qrCard" style="display:none;">
+    <h2>📱 QR Code</h2>
+    <div class="qr-wrap">
+      <div id="qrcode"></div>
+      <div class="qr-label">Scan to verify this product on any device</div>
+      <div class="qr-url" id="qrUrl"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const RPC_URL        = "https://eth.didlab.org";
+const PT_ADDRESS     = "0x6d1b146f301bc83E1362d29797b8b1c396132Ca1";
+const PT_ABI = [
+  {"inputs":[{"internalType":"uint256","name":"productId","type":"uint256"}],"name":"getProduct","outputs":[{"components":[{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"string","name":"name","type":"string"},{"internalType":"address","name":"manufacturer","type":"address"},{"internalType":"address","name":"currentHolder","type":"address"},{"internalType":"uint8","name":"status","type":"uint8"},{"internalType":"uint256","name":"createdAt","type":"uint256"},{"internalType":"bytes32","name":"manufacturingCredId","type":"bytes32"},{"internalType":"bytes32","name":"secretHash","type":"bytes32"},{"internalType":"address","name":"pendingRecipient","type":"address"},{"internalType":"bytes32","name":"transferCredId","type":"bytes32"}],"internalType":"struct ProductTransfer.Product","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"productId","type":"uint256"}],"name":"getTransferHistory","outputs":[{"components":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"timestamp","type":"uint256"},{"internalType":"string","name":"action","type":"string"}],"internalType":"struct ProductTransfer.TransferRecord[]","name":"","type":"tuple[]"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"totalProducts","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}
+];
+
+const STATUS_NAMES = ["Created", "In Transit", "Delivered", "Revoked"];
+
+function shortAddr(addr) {
+  return addr.slice(0,6) + "..." + addr.slice(-4);
+}
+
+function setStatus(msg, type) {
+  const box = document.getElementById("statusBox");
+  box.textContent = msg;
+  box.className = "status-box " + type;
+}
+
+async function verifyProduct() {
+  const id = document.getElementById("productId").value.trim();
+  if (!id || id < 1) { setStatus("Please enter a valid product ID.", "error"); return; }
+
+  document.getElementById("result").style.display = "none";
+  document.getElementById("qrCard").style.display = "none";
+  document.getElementById("verifyBtn").disabled = true;
+  setStatus("⏳ Connecting to DIDLab Besu and fetching product data...", "loading");
+
+  try {
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const pt = new ethers.Contract(PT_ADDRESS, PT_ABI, provider);
+
+    const product = await pt.getProduct(BigInt(id));
+    if (product.id === 0n) throw new Error("Product not found");
+
+    const history = await pt.getTransferHistory(BigInt(id));
+
+    // Fill product info
+    document.getElementById("productName").textContent = product.name;
+    document.getElementById("metaId").textContent = product.id.toString();
+    document.getElementById("metaCreated").textContent =
+      new Date(Number(product.createdAt) * 1000).toLocaleString();
+    document.getElementById("metaMf").textContent = shortAddr(product.manufacturer);
+    document.getElementById("metaHolder").textContent = shortAddr(product.currentHolder);
+
+    const statusNum = Number(product.status);
+    const pill = document.getElementById("statusPill");
+    pill.textContent = STATUS_NAMES[statusNum] || "Unknown";
+    pill.className = "status-pill " +
+      (statusNum === 2 ? "delivered" : statusNum === 1 ? "intransit" : "created");
+
+    // Timeline
+    const timeline = document.getElementById("timeline");
+    timeline.innerHTML = "";
+
+    // Add creation as first entry
+    const createItem = document.createElement("div");
+    createItem.className = "tl-item";
+    createItem.innerHTML = `
+      <div class="tl-dot"></div>
+      <div class="tl-action">📦 Product Created</div>
+      <div class="tl-detail">By ${shortAddr(product.manufacturer)}</div>
+      <div class="tl-time">${new Date(Number(product.createdAt) * 1000).toLocaleString()}</div>
+    `;
+    timeline.appendChild(createItem);
+
+    history.forEach((entry, i) => {
+      const item = document.createElement("div");
+      item.className = "tl-item";
+      const isFinal = i === history.length - 1 && entry.action === "CLAIMED";
+      item.innerHTML = `
+        <div class="tl-dot ${isFinal ? "final" : ""}"></div>
+        <div class="tl-action">${entry.action === "CLAIMED" ? "✅ Transfer Claimed" : "🔒 Transfer Committed"}</div>
+        <div class="tl-detail">${shortAddr(entry.from)} → ${shortAddr(entry.to)}</div>
+        <div class="tl-time">${new Date(Number(entry.timestamp) * 1000).toLocaleString()}</div>
+      `;
+      timeline.appendChild(item);
+    });
+
+    document.getElementById("result").style.display = "block";
+
+    // QR code
+    const qrContainer = document.getElementById("qrcode");
+    qrContainer.innerHTML = "";
+    const verifyUrl = window.location.href.split("?")[0] + "?id=" + id;
+    document.getElementById("qrUrl").textContent = verifyUrl;
+    new QRCode(qrContainer, {
+      text: verifyUrl, width: 200, height: 200,
+      colorDark: "#1a56db", colorLight: "#ffffff"
+    });
+    document.getElementById("qrCard").style.display = "block";
+
+    document.getElementById("statusBox").style.display = "none";
+
+    // Auto-load from URL param
+    const url = new URL(window.location.href);
+    if (!url.searchParams.get("id")) {
+      url.searchParams.set("id", id);
+      window.history.replaceState({}, "", url);
+    }
+
+  } catch (err) {
+    setStatus("❌ Error: " + err.message, "error");
+  } finally {
+    document.getElementById("verifyBtn").disabled = false;
+  }
+}
+
+// Auto-verify if URL has ?id=
+window.addEventListener("load", () => {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("id");
+  if (id) {
+    document.getElementById("productId").value = id;
+    verifyProduct();
+  }
+});
+</script>
+</body>
+</html>

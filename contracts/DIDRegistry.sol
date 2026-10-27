@@ -28,14 +28,13 @@ contract DIDRegistry {
     }
 
     function registerDID(string calldata role) external {
-        require(trustRegistry.isAuthorizedIssuer(msg.sender), "DIDRegistry: caller not authorized in TrustRegistry");
-        require(bytes(didDocuments[msg.sender].did).length == 0, "DIDRegistry: DID already registered for this address");
+        require(bytes(didDocuments[msg.sender].did).length == 0, "DIDRegistry: already registered");
         string memory did = _buildDID(msg.sender);
         didDocuments[msg.sender] = DIDDocument({ did: did, role: role, controller: msg.sender, createdAt: block.timestamp, active: true });
         didToAddress[did] = msg.sender;
-        auditLog.logAction(msg.sender, "DID_REGISTERED", string(abi.encodePacked("did=", did, " role=", role)));
+        auditLog.logAction(msg.sender, "DID_REGISTERED", string(abi.encodePacked("role=", role)));
         emit DIDRegistered(msg.sender, did, role, block.timestamp);
-    }
+   }
 
     function deactivateDID() external {
         DIDDocument storage doc = didDocuments[msg.sender];
@@ -46,7 +45,7 @@ contract DIDRegistry {
         emit DIDDeactivated(msg.sender, doc.did, block.timestamp);
     }
 
-    function getDID(address controller) external view returns (string memory) { return didDocuments[controller].did; }
+    function getDID(address controller) external view returns (DIDDocument memory) { return didDocuments[controller]; }
     function isActiveDID(address controller) external view returns (bool) {
         DIDDocument storage doc = didDocuments[controller];
         return bytes(doc.did).length > 0 && doc.active;

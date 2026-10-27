@@ -1,117 +1,214 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "./CredentialRegistry.sol";
-import "./AuditLog.sol";
+interface ICredentialRegistry {
+    function isCredentialValid(address holder) external view returns (bool);
+}
 
-contract ProductTransfer {
-    enum ProductStatus { Created, InTransit, Delivered, Revoked }
-
-    struct Product {
-        uint256       id;
-        string        name;
-        address       manufacturer;
-        address       currentHolder;
-        ProductStatus status;
-        uint256       createdAt;
-        bytes32       manufacturingCredId;
-        bytes32       secretHash;
-        address       pendingRecipient;
-        bytes32       transferCredId;
+interface IDIDRegistry {
+    struct DIDDocument {
+        string  did;
+        string  role;
+        address controller;
+        uint256 createdAt;
+        bool    active;
     }
+    function getDID(address controller) external view returns (DIDDocument memory);
+}
 
+/**
+ * @title ProductTransfer
+ * @notice Manages product creation and transfer through a supply chain.
+ *         Credential verification replaces HTLC — blockchain trust IS the security.
+ *         IPFS CID stored as a stub for now; populated when IPFS is integrated.
+ */
+contract ProductTransfer {
+
+    // ─── Enums ────────────────────────────────────────────────────────────────
+    enum Status { InStock, InTransit, Delivered }
+
+    // ─── Structs ──────────────────────────────────────────────────────────────
     struct TransferRecord {
         address from;
         address to;
         uint256 timestamp;
-        string  action;
+        bool    confirmed;
     }
 
-    CredentialRegistry public immutable credentialRegistry;
-    AuditLog           public immutable auditLog;
+    struct Product {
+        uint256        id;
+        string         name;
+        string         ipfsCID;        // IPFS metadata CID — empty until IPFS integrated
+        address        manufacturer;   // original creator (MF)
+        address        currentHolder;
+        address        pendingRecipient; // set when shipped, cleared on confirm
+        Status         status;
+        uint256        createdAt;
+    }
+
+    // ─── State ────────────────────────────────────────────────────────────────
+    ICredentialRegistry public immutable credRegistry;
+    IDIDRegistry        public immutable didRegistry;
+
+    uint256 private _nextId = 1;
 
     mapping(uint256 => Product)          public products;
     mapping(uint256 => TransferRecord[]) public transferHistory;
-    uint256 private _productCounter;
 
-    event ProductCreated(uint256 indexed productId, address indexed manufacturer, string name);
-    event TransferCommitted(uint256 indexed productId, address indexed from, address indexed to, bytes32 secretHash);
-    event TransferClaimed(uint256 indexed productId, address indexed claimedBy);
-    event TransferCancelled(uint256 indexed productId, address indexed cancelledBy);
+    // ─── Events ───────────────────────────────────────────────────────────────
+    event ProductCreated(uint256 indexed id, address indexed manufacturer, string name);
+    event ProductShipped(uint256 indexed id, address indexed from, address indexed to);
+    event ProductReceived(uint256 indexed id, address indexed by);
 
-    constructor(address _credentialRegistry, address _auditLog) {
-        credentialRegistry = CredentialRegistry(_credentialRegistry);
-        auditLog           = AuditLog(_auditLog);
+    // ─── Constructor ──────────────────────────────────────────────────────────
+    constructor(address _credRegistry, address _didRegistry) {
+        credRegistry = ICredentialRegistry(_credRegistry);
+        didRegistry  = IDIDRegistry(_didRegistry);
     }
 
-    function createProduct(string calldata name, bytes32 credentialId) external returns (uint256 productId) {
-        (bool valid, string memory reason) = credentialRegistry.verifyCredential(credentialId, msg.sender, "ManufacturingLicense", 0);
-        require(valid, string(abi.encodePacked("ProductTransfer: credential invalid: ", reason)));
-        productId = ++_productCounter;
-        products[productId] = Product({ id: productId, name: name, manufacturer: msg.sender, currentHolder: msg.sender, status: ProductStatus.Created, createdAt: block.timestamp, manufacturingCredId: credentialId, secretHash: bytes32(0), pendingRecipient: address(0), transferCredId: bytes32(0) });
-        credentialRegistry.linkCredentialToProduct(credentialId, productId, msg.sender);
-        auditLog.logAction(msg.sender, "PRODUCT_CREATED", string(abi.encodePacked("productId=", _uint2str(productId), " name=", name)));
-        emit ProductCreated(productId, msg.sender, name);
+    // ─── Modifiers ────────────────────────────────────────────────────────────
+    modifier onlyCredentialed() {
+        require(credRegistry.isCredentialValid(msg.sender), "ProductTransfer: no valid credential");
+        _;
     }
 
-    function commitTransfer(uint256 productId, bytes32 secretHash, address recipient, bytes32 recipientCredId) external {
+    modifier onlyHolder(uint256 productId) {
+        require(products[productId].currentHolder == msg.sender, "ProductTransfer: not current holder");
+        _;
+    }
+
+    modifier productExists(uint256 productId) {
+        require(products[productId].id != 0, "ProductTransfer: product not found");
+        _;
+    }
+
+    // ─── External: Manufacturer ───────────────────────────────────────────────
+
+    /**
+     * @notice Create a new product. Caller must have a valid credential (MF role).
+     * @param name    Human-readable product name.
+     * @param ipfsCID IPFS CID for extended metadata (pass "" until IPFS is integrated).
+     */
+    function createProduct(string calldata name, string calldata ipfsCID)
+        external
+        onlyCredentialed
+        returns (uint256)
+    {
+        IDIDRegistry.DIDDocument memory doc = didRegistry.getDID(msg.sender);
+        require(doc.active, "ProductTransfer: sender DID not active");
+        require(
+            keccak256(bytes(doc.role)) == keccak256(bytes("Manufacturer")),
+            "ProductTransfer: only Manufacturers can create products"
+        );
+
+        uint256 id = _nextId++;
+        products[id] = Product({
+            id:               id,
+            name:             name,
+            ipfsCID:          ipfsCID,
+            manufacturer:     msg.sender,
+            currentHolder:    msg.sender,
+            pendingRecipient: address(0),
+            status:           Status.InStock,
+            createdAt:        block.timestamp
+        });
+
+        emit ProductCreated(id, msg.sender, name);
+        return id;
+    }
+
+    // ─── External: Current holder ─────────────────────────────────────────────
+
+    /**
+     * @notice Ship a product to the next party in the chain.
+     *         Both sender and recipient must have valid credentials.
+     * @param productId  ID of the product to ship.
+     * @param recipient  Address of the receiving party (DT or RT).
+     */
+    function shipTo(uint256 productId, address recipient)
+        external
+        onlyCredentialed
+        onlyHolder(productId)
+        productExists(productId)
+    {
         Product storage p = products[productId];
-        require(p.id != 0, "ProductTransfer: product does not exist");
-        require(p.currentHolder == msg.sender, "ProductTransfer: caller is not current holder");
-        require(p.status == ProductStatus.Created, "ProductTransfer: product not in transferable state");
-        require(secretHash != bytes32(0), "ProductTransfer: secretHash cannot be zero");
-        require(recipient != address(0) && recipient != msg.sender, "ProductTransfer: invalid recipient");
-        p.status = ProductStatus.InTransit;
-        p.secretHash = secretHash;
+        require(p.status == Status.InStock, "ProductTransfer: product not in stock");
+        require(recipient != address(0), "ProductTransfer: invalid recipient");
+        require(recipient != msg.sender,  "ProductTransfer: cannot ship to yourself");
+        require(
+            credRegistry.isCredentialValid(recipient),
+            "ProductTransfer: recipient has no valid credential"
+        );
+
+        p.status           = Status.InTransit;
         p.pendingRecipient = recipient;
-        p.transferCredId = recipientCredId;
-        transferHistory[productId].push(TransferRecord({ from: msg.sender, to: recipient, timestamp: block.timestamp, action: "COMMITTED" }));
-        auditLog.logAction(msg.sender, "TRANSFER_COMMITTED", _uint2str(productId));
-        emit TransferCommitted(productId, msg.sender, recipient, secretHash);
+
+        transferHistory[productId].push(TransferRecord({
+            from:      msg.sender,
+            to:        recipient,
+            timestamp: block.timestamp,
+            confirmed: false
+        }));
+
+        emit ProductShipped(productId, msg.sender, recipient);
     }
 
-    function claimTransfer(uint256 productId, string calldata secret) external {
+    // ─── External: Recipient ──────────────────────────────────────────────────
+
+    /**
+     * @notice Confirm receipt of a product that was shipped to you.
+     * @param productId  ID of the product to confirm.
+     */
+    function confirmReceipt(uint256 productId)
+        external
+        onlyCredentialed
+        productExists(productId)
+    {
         Product storage p = products[productId];
-        require(p.id != 0, "ProductTransfer: product does not exist");
-        require(p.status == ProductStatus.InTransit, "ProductTransfer: no pending transfer");
-        require(p.pendingRecipient == msg.sender, "ProductTransfer: caller is not the pending recipient");
-        require(keccak256(abi.encodePacked(secret)) == p.secretHash, "ProductTransfer: secret does not match commitment (wrong secret)");
-        if (p.transferCredId != bytes32(0)) {
-            (bool valid, string memory reason) = credentialRegistry.verifyCredential(p.transferCredId, msg.sender, "", 0);
-            require(valid, string(abi.encodePacked("ProductTransfer: recipient credential invalid: ", reason)));
-        }
-        address prev = p.currentHolder;
-        p.currentHolder = msg.sender;
-        p.status = ProductStatus.Created;
-        p.secretHash = bytes32(0);
+        require(p.status == Status.InTransit,         "ProductTransfer: not in transit");
+        require(p.pendingRecipient == msg.sender,      "ProductTransfer: not the pending recipient");
+
+        // Mark the last transfer record as confirmed
+        uint256 len = transferHistory[productId].length;
+        require(len > 0, "ProductTransfer: no transfer record found");
+        transferHistory[productId][len - 1].confirmed = true;
+
+        p.currentHolder    = msg.sender;
         p.pendingRecipient = address(0);
-        p.transferCredId = bytes32(0);
-        transferHistory[productId].push(TransferRecord({ from: prev, to: msg.sender, timestamp: block.timestamp, action: "CLAIMED" }));
-        auditLog.logAction(msg.sender, "TRANSFER_CLAIMED", _uint2str(productId));
-        emit TransferClaimed(productId, msg.sender);
+        p.status           = Status.InStock; // back to InStock so they can ship further
+
+        emit ProductReceived(productId, msg.sender);
     }
 
-    function cancelTransfer(uint256 productId) external {
-        Product storage p = products[productId];
-        require(p.status == ProductStatus.InTransit, "ProductTransfer: no pending transfer");
-        TransferRecord[] storage history = transferHistory[productId];
-        require(history[history.length - 1].from == msg.sender, "ProductTransfer: only committer can cancel");
-        p.status = ProductStatus.Created;
-        p.secretHash = bytes32(0);
-        p.pendingRecipient = address(0);
-        p.transferCredId = bytes32(0);
-        history.push(TransferRecord({ from: msg.sender, to: address(0), timestamp: block.timestamp, action: "CANCELLED" }));
-        auditLog.logAction(msg.sender, "TRANSFER_CANCELLED", _uint2str(productId));
-        emit TransferCancelled(productId, msg.sender);
+    // ─── Views ────────────────────────────────────────────────────────────────
+
+    function getProduct(uint256 productId)
+        external
+        view
+        productExists(productId)
+        returns (Product memory)
+    {
+        return products[productId];
     }
 
-    function getProduct(uint256 productId) external view returns (Product memory) { return products[productId]; }
-    function getTransferHistory(uint256 productId) external view returns (TransferRecord[] memory) { return transferHistory[productId]; }
-    function totalProducts() external view returns (uint256) { return _productCounter; }
+    function getTransferHistory(uint256 productId)
+        external
+        view
+        productExists(productId)
+        returns (TransferRecord[] memory)
+    {
+        return transferHistory[productId];
+    }
 
-    function _uint2str(uint256 v) internal pure returns (string memory) {
-        if(v==0)return "0"; uint256 t=v; uint256 l;
-        while(t!=0){l++;t/=10;} bytes memory buf=new bytes(l);
-        while(v!=0){buf[--l]=bytes1(uint8(48+v%10));v/=10;} return string(buf);
+    function getTransferCount(uint256 productId)
+        external
+        view
+        returns (uint256)
+    {
+        return transferHistory[productId].length;
+    }
+
+    function totalProducts() external view returns (uint256) {
+        return _nextId - 1;
     }
 }

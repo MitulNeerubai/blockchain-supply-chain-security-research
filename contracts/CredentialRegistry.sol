@@ -43,8 +43,22 @@ contract CredentialRegistry {
         require(trustRegistry.isAuthorizedIssuer(msg.sender), "CredentialRegistry: issuer not authorized in TrustRegistry");
         require(didRegistry.isActiveDID(msg.sender), "CredentialRegistry: issuer does not have an active DID");
         require(didRegistry.isActiveDID(holder), "CredentialRegistry: holder does not have an active DID");
+
+        // ONE CREDENTIAL PER WALLET — holder must not already have an active credential
+        require(!isCredentialValid(holder), "CredentialRegistry: holder already has an active credential. Revoke it first.");
+
         credentialId = keccak256(abi.encodePacked(msg.sender, holder, credType, _nonce++, block.timestamp));
-        credentials[credentialId] = Credential({ id: credentialId, issuer: msg.sender, holder: holder, credType: credType, issuedAt: block.timestamp, expiresAt: expiresAt, revoked: false, linkedProductId: 0, productLinked: false });
+        credentials[credentialId] = Credential({
+            id: credentialId,
+            issuer: msg.sender,
+            holder: holder,
+            credType: credType,
+            issuedAt: block.timestamp,
+            expiresAt: expiresAt,
+            revoked: false,
+            linkedProductId: 0,
+            productLinked: false
+        });
         credentialsByIssuer[msg.sender].push(credentialId);
         credentialsByHolder[holder].push(credentialId);
         auditLog.logAction(msg.sender, "CREDENTIAL_ISSUED", string(abi.encodePacked("credId=", _bytes32ToHex(credentialId), " type=", credType)));
@@ -91,6 +105,19 @@ contract CredentialRegistry {
     function getCredential(bytes32 credentialId) external view returns (Credential memory) { return credentials[credentialId]; }
     function getCredentialsByHolder(address holder) external view returns (bytes32[] memory) { return credentialsByHolder[holder]; }
 
+    // Returns true if holder has at least one non-revoked, non-expired credential
+    // Changed to PUBLIC so issueCredential can call it internally
+    function isCredentialValid(address holder) public view returns (bool) {
+        bytes32[] storage ids = credentialsByHolder[holder];
+        for (uint256 i = 0; i < ids.length; i++) {
+            Credential storage cred = credentials[ids[i]];
+            if (!cred.revoked && (cred.expiresAt == 0 || block.timestamp <= cred.expiresAt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function _bytes32ToHex(bytes32 b) internal pure returns (string memory) {
         bytes memory h = new bytes(66); h[0]='0'; h[1]='x';
         for (uint256 i=0;i<32;i++){uint8 byt=uint8(b[i]);h[2+i*2]=_hexChar(byt>>4);h[3+i*2]=_hexChar(byt&0x0f);}
@@ -107,18 +134,4 @@ contract CredentialRegistry {
         while(t!=0){l++;t/=10;} bytes memory buf=new bytes(l);
         while(v!=0){buf[--l]=bytes1(uint8(48+v%10));v/=10;} return string(buf);
     }
-
-    // Returns true if holder has at least one non-revoked, non-expired credential
-    function isCredentialValid(address holder) external view returns (bool) {
-        bytes32[] storage ids = credentialsByHolder[holder];
-        for (uint256 i = 0; i < ids.length; i++) {
-            Credential storage cred = credentials[ids[i]];
-            if (!cred.revoked && (cred.expiresAt == 0 || block.timestamp <= cred.expiresAt)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-
 }

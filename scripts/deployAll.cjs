@@ -25,7 +25,7 @@ async function main() {
   const credAddr = await CR.getAddress();
   console.log("CredentialRegistry:", credAddr);
 
-  const PT = await (await ethers.getContractFactory("ProductTransfer")).deploy(credAddr, auditAddr);
+  const PT = await (await ethers.getContractFactory("ProductTransfer")).deploy(credAddr, didAddr);
   await PT.waitForDeployment();
   const ptAddr = await PT.getAddress();
   console.log("ProductTransfer:", ptAddr);

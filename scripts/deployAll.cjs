@@ -30,15 +30,22 @@ async function main() {
   const ptAddr = await PT.getAddress();
   console.log("ProductTransfer:", ptAddr);
 
-  await (await AL.registerContract(didAddr, "DIDRegistry")).wait();
+  const TA = await (await ethers.getContractFactory("TraceabilityAudit")).deploy(ptAddr, credAddr, didAddr);
+  await TA.waitForDeployment();
+  const taAddr = await TA.getAddress();
+  console.log("TraceabilityAudit:", taAddr);
+
+  await (await AL.registerContract(didAddr,  "DIDRegistry")).wait();
   await (await AL.registerContract(credAddr, "CredentialRegistry")).wait();
-  await (await AL.registerContract(ptAddr, "ProductTransfer")).wait();
+  await (await AL.registerContract(ptAddr,   "ProductTransfer")).wait();
+  await (await AL.registerContract(taAddr,   "TraceabilityAudit")).wait();
+  console.log("Contracts registered with AuditLog");
 
   console.log("\n=== PASTE INTO App.jsx ===");
   console.log(`trust: '${trustAddr}',`);
   console.log(`did:   '${didAddr}',`);
   console.log(`cred:  '${credAddr}',`);
   console.log(`pt:    '${ptAddr}',`);
-  console.log(`audit: '${auditAddr}',`);
+  console.log(`audit: '${taAddr}',`);
 }
 main().catch(err => { console.error(err); process.exit(1); });

@@ -9,7 +9,7 @@ A Self-Sovereign Identity (SSI) based supply chain traceability system built on 
 
 ## Overview
 
-This system allows a multi-actor supply chain (Root Governance Authority → Local Government → Manufacturer → Distributor → Retailer) to track products end-to-end on a permissioned blockchain. Every transfer is enforced by smart contracts — only credentialed, DID-registered actors can participate.
+This system allows a multi-actor supply chain (Root Governance Authority → Local Government → Manufacturer → Distributor → Retailer) to track products end-to-end on a permissioned blockchain. Every transfer is enforced by smart contracts - only credentialed, DID-registered actors can participate.
 
 ---
 
@@ -43,22 +43,22 @@ This system allows a multi-actor supply chain (Root Governance Authority → Loc
 
 ## Key Features
 
-- **SSI-based access control** — actors register DIDs and hold verifiable credentials before they can participate
-- **Commit-reveal transfers** — products are shipped with a secret hash; recipient claims by revealing the plaintext secret
-- **Full audit trail** — every action (authorize, register, issue, create, ship, claim) is logged on-chain with timestamps
-- **Chain verification** — Retailer can verify the entire custody chain: roles, credentials, transfer sequence, and DID status at every hop
-- **Smart contract enforcement** — unauthorized actors are blocked at the contract level, not just the UI
+- **SSI-based access control** - actors register DIDs and hold verifiable credentials before they can participate
+- **Commit-reveal transfers** - products are shipped with a secret hash; recipient claims by revealing the plaintext secret
+- **Full audit trail** - every action (authorize, register, issue, create, ship, claim) is logged on-chain with timestamps
+- **Chain verification** - Retailer can verify the entire custody chain: roles, credentials, transfer sequence, and DID status at every hop
+- **Smart contract enforcement** - unauthorized actors are blocked at the contract level, not just the UI
 
 ---
 
 ## Tech Stack
 
-- **Solidity 0.8.24** — smart contracts
-- **Hardhat v2.22.15** — development and deployment
-- **Ethers.js v6** — blockchain interaction
-- **React** — frontend UI
-- **MetaMask** — wallet integration
-- **Hyperledger Besu** — permissioned EVM network
+- **Solidity 0.8.24** - smart contracts
+- **Hardhat v2.22.15** - development and deployment
+- **Ethers.js v6** - blockchain interaction
+- **React** - frontend UI
+- **MetaMask** - wallet integration
+- **Hyperledger Besu** - permissioned EVM network
 
 ---
 
@@ -135,5 +135,5 @@ The original paper demonstrated the TTS architecture on the Fantom public blockc
 
 **Mitul Neerubai**  
 B.S. Computer Science, UMKC (May 2026)  
-Research Analyst — DIDLab, UMKC  
+Research Analyst - DIDLab, UMKC  
 [github.com/MitulNeerubai](https://github.com/MitulNeerubai) · [linkedin.com/in/mitul-neerubai](https://linkedin.com/in/mitul-neerubai)

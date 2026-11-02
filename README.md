@@ -27,7 +27,7 @@ This system allows a multi-actor supply chain (Root Governance Authority → Loc
 ### Smart Contracts
 | Contract | Address | Purpose |
 |----------|---------|---------|
-| `TrustRegistry` | `0x2e4511...` | Root of trust — authorized issuers |
+| `TrustRegistry` | `0x2e4511...` | Root of trust - authorized issuers |
 | `DIDRegistry` | `0x98F494...` | Decentralized Identifiers for all actors |
 | `CredentialRegistry` | `0x841fa7...` | On-chain verifiable credentials |
 | `ProductTransfer` | `0x4c4c26...` | Product creation, custody transfers, secret-hash claim |

@@ -2,7 +2,7 @@
 
 A Self-Sovereign Identity (SSI) based supply chain traceability system built on Hyperledger Besu. Implements the Trusted Traceability Service (TTS) framework with a full React UI, on-chain credential enforcement, and an immutable audit trail.
 
-> Research prototype developed at **DIDLab — Digital Identity and Distributed Ledger Laboratory, UMKC**  
+> Research prototype developed at **DIDLab - Digital Identity and Distributed Ledger Laboratory, UMKC**  
 > Supervisor: Dr. A S M Touhidul Hasan
 
 ---

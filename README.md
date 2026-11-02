@@ -1,4 +1,4 @@
-# Blockchain Supply Chain Security — SSI Prototype
+# Blockchain Supply Chain Security - SSI Prototype
 
 A Self-Sovereign Identity (SSI) based supply chain traceability system built on Hyperledger Besu. Implements the Trusted Traceability Service (TTS) framework with a full React UI, on-chain credential enforcement, and an immutable audit trail.
 
@@ -75,8 +75,8 @@ This system allows a multi-actor supply chain (Root Governance Authority → Loc
 
 ### Install & Run
 ```bash
-git clone https://github.com/MitulNeerubai/<repo-name>
-cd <repo-name>
+git clone https://github.com/MitulNeerubai/blockchain-supply-chain-security-research.git
+cd blockchain-supply-chain-security-research
 npm install
 npm run dev
 ```

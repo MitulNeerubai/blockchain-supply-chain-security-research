@@ -113,16 +113,16 @@ function Styles() {
 
       body {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        background: #0f172a;
-        color: #e2e8f0;
+        background: #f3f4f6;
+        color: #111827;
         margin: 0;
         min-height: 100vh;
       }
 
       /* ── Navbar ─────────────────────────────────────────────── */
       .navbar {
-        background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%);
-        border-bottom: 1px solid rgba(99,102,241,.25);
+        background: linear-gradient(135deg, #1f2937 0%, #374151 60%, #4b5563 100%);
+        border-bottom: 1px solid rgba(234,88,12,.3);
         padding: 0 24px;
         height: 60px;
         display: flex;
@@ -132,7 +132,7 @@ function Styles() {
         top: 0;
         z-index: 100;
         backdrop-filter: blur(10px);
-        box-shadow: 0 4px 24px rgba(0,0,0,.4);
+        box-shadow: 0 4px 20px rgba(0,0,0,.15);
       }
       .navbar-brand {
         font-size: 1.1rem;
@@ -151,8 +151,8 @@ function Styles() {
       .navbar-addr {
         font-size: .8rem;
         font-weight: 500;
-        color: rgba(255,255,255,.7);
-        background: rgba(255,255,255,.1);
+        color: rgba(255,255,255,.9);
+        background: rgba(255,255,255,.2);
         padding: 4px 10px;
         border-radius: 20px;
       }
@@ -166,7 +166,7 @@ function Styles() {
       .page-title {
         font-size: 1.5rem;
         font-weight: 800;
-        color: #f1f5f9;
+        color: #111827;
         margin: 0 0 20px;
         letter-spacing: -.02em;
       }
@@ -181,21 +181,21 @@ function Styles() {
 
       /* ── Cards ───────────────────────────────────────────────── */
       .card {
-        background: rgba(30, 41, 59, .95);
-        border: 1px solid rgba(99,102,241,.15);
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
         border-radius: 14px;
         padding: 20px;
-        box-shadow: 0 4px 24px rgba(0,0,0,.3);
+        box-shadow: 0 2px 12px rgba(0,0,0,.06);
       }
       .card-title {
         font-weight: 700;
         font-size: 1rem;
-        color: #f1f5f9;
+        color: #111827;
         margin-bottom: 4px;
       }
       .card-sub {
         font-size: .82rem;
-        color: #64748b;
+        color: #6b7280;
         margin-bottom: 16px;
         line-height: 1.5;
       }
@@ -213,17 +213,16 @@ function Styles() {
         align-items: center;
         justify-content: center;
         padding: 24px 16px;
-        background: radial-gradient(ellipse at top, #1e1b4b 0%, #0f172a 60%);
+        background: linear-gradient(160deg, #f3f4f6 0%, #e5e7eb 60%);
       }
       .login-card {
-        background: rgba(30,41,59,.9);
-        border: 1px solid rgba(99,102,241,.25);
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
         border-radius: 20px;
         padding: 36px 32px;
         width: 100%;
         max-width: 420px;
-        box-shadow: 0 20px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(99,102,241,.1);
-        backdrop-filter: blur(20px);
+        box-shadow: 0 8px 40px rgba(0,0,0,.08), 0 2px 12px rgba(0,0,0,.06);
       }
       .login-logo {
         display: block;
@@ -234,14 +233,14 @@ function Styles() {
       .login-title {
         font-size: 1.6rem;
         font-weight: 900;
-        color: #f1f5f9;
+        color: #111827;
         text-align: center;
         margin: 0 0 6px;
         letter-spacing: -.03em;
       }
       .login-subtitle {
         font-size: .875rem;
-        color: #64748b;
+        color: #6b7280;
         text-align: center;
         margin: 0 0 20px;
         line-height: 1.6;
@@ -254,29 +253,29 @@ function Styles() {
       }
       .feature {
         font-size: .82rem;
-        color: #94a3b8;
+        color: #6b7280;
         display: flex;
         align-items: center;
         gap: 8px;
       }
       .login-note {
         font-size: .75rem;
-        color: #475569;
+        color: #9ca3af;
         text-align: center;
         margin: 16px 0 0;
       }
       .role-info {
-        background: rgba(99,102,241,.1);
-        border: 1px solid rgba(99,102,241,.2);
+        background: rgba(234,88,12,.08);
+        border: 1px solid rgba(234,88,12,.2);
         border-radius: 8px;
         padding: 10px 14px;
         font-size: .82rem;
-        color: #a5b4fc;
+        color: #374151;
         margin-bottom: 16px;
       }
       .divider {
         text-align: center;
-        color: #334155;
+        color: #9ca3af;
         font-size: .8rem;
         font-weight: 600;
         margin: 16px 0;
@@ -288,7 +287,7 @@ function Styles() {
         top: 50%;
         width: 42%;
         height: 1px;
-        background: #1e293b;
+        background: #e5e7eb;
       }
       .divider::before { left: 0; }
       .divider::after  { right: 0; }
@@ -314,13 +313,13 @@ function Styles() {
         cursor: not-allowed;
       }
       .btn-primary {
-        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        background: linear-gradient(135deg, #374151, #4b5563);
         color: #fff;
-        box-shadow: 0 4px 14px rgba(99,102,241,.4);
+        box-shadow: 0 4px 14px rgba(234,88,12,.35);
       }
       .btn-primary:hover:not(:disabled) {
-        background: linear-gradient(135deg, #4f46e5, #7c3aed);
-        box-shadow: 0 6px 20px rgba(99,102,241,.5);
+        background: linear-gradient(135deg, #1f2937, #374151);
+        box-shadow: 0 6px 20px rgba(234,88,12,.45);
         transform: translateY(-1px);
       }
       .btn-success {
@@ -342,19 +341,19 @@ function Styles() {
         transform: translateY(-1px);
       }
       .btn-outline {
-        background: rgba(255,255,255,.05);
-        color: #94a3b8;
-        border: 1px solid rgba(255,255,255,.1);
+        background: #f9fafb;
+        color: #374151;
+        border: 1px solid #d1d5db;
       }
       .btn-outline:hover:not(:disabled) {
-        background: rgba(255,255,255,.1);
-        color: #e2e8f0;
-        border-color: rgba(255,255,255,.2);
+        background: #f3f4f6;
+        color: #111827;
+        border-color: #9ca3af;
       }
       .btn-outline-white {
-        background: rgba(255,255,255,.1);
+        background: rgba(255,255,255,.2);
         color: #fff;
-        border: 1px solid rgba(255,255,255,.2);
+        border: 1px solid rgba(255,255,255,.35);
         border-radius: 8px;
         padding: 5px 12px;
         font-size: .82rem;
@@ -364,7 +363,7 @@ function Styles() {
         transition: all .15s;
       }
       .btn-outline-white:hover {
-        background: rgba(255,255,255,.2);
+        background: rgba(255,255,255,.3);
       }
       .btn-lg { padding: 12px 24px; font-size: .95rem; }
       .btn-sm { padding: 5px 12px; font-size: .78rem; }
@@ -375,30 +374,30 @@ function Styles() {
         display: block;
         font-size: .8rem;
         font-weight: 600;
-        color: #94a3b8;
+        color: #374151;
         margin-bottom: 5px;
         letter-spacing: .02em;
         text-transform: uppercase;
       }
       .form-input, .form-select {
         width: 100%;
-        background: rgba(15,23,42,.8);
-        border: 1px solid rgba(99,102,241,.2);
+        background: #f9fafb;
+        border: 1px solid #d1d5db;
         border-radius: 8px;
         padding: 10px 14px;
-        color: #f1f5f9;
+        color: #111827;
         font-size: .875rem;
         font-family: inherit;
         transition: all .15s;
         outline: none;
       }
-      .form-input::placeholder { color: #475569; }
+      .form-input::placeholder { color: #9ca3af; }
       .form-input:focus, .form-select:focus {
-        border-color: #6366f1;
-        box-shadow: 0 0 0 3px rgba(99,102,241,.2);
-        background: rgba(15,23,42,.95);
+        border-color: #6b7280;
+        box-shadow: 0 0 0 3px rgba(107,114,128,.15);
+        background: #ffffff;
       }
-      .form-select option { background: #1e293b; color: #f1f5f9; }
+      .form-select option { background: #ffffff; color: #111827; }
       .form-select-sm { padding: 6px 10px; font-size: .82rem; }
 
       /* ── Alerts ──────────────────────────────────────────────── */
@@ -456,9 +455,9 @@ function Styles() {
         font-weight: 700;
         letter-spacing: .03em;
       }
-      .status-stock   { background: rgba(16,185,129,.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,.3); }
-      .status-transit { background: rgba(245,158,11,.15); color: #fcd34d; border: 1px solid rgba(245,158,11,.3); }
-      .status-done    { background: rgba(99,102,241,.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,.3); }
+      .status-stock   { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+      .status-transit { background: #fef9c3; color: #a16207; border: 1px solid #fde047; }
+      .status-done    { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
 
       /* ── Account list ─────────────────────────────────────────── */
       .account-list {
@@ -471,8 +470,8 @@ function Styles() {
         display: flex;
         align-items: center;
         gap: 12px;
-        background: rgba(99,102,241,.08);
-        border: 1px solid rgba(99,102,241,.15);
+        background: #f3f4f6;
+        border: 1px solid #d1d5db;
         border-radius: 10px;
         padding: 10px 14px;
         cursor: pointer;
@@ -481,55 +480,55 @@ function Styles() {
         width: 100%;
         text-align: left;
       }
-      .account-item:hover { background: rgba(99,102,241,.15); border-color: rgba(99,102,241,.3); transform: translateY(-1px); }
+      .account-item:hover { background: #e5e7eb; border-color: #9ca3af; transform: translateY(-1px); }
       .account-avatar {
         width: 40px; height: 40px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        background: linear-gradient(135deg, #374151, #4b5563);
         display: flex; align-items: center; justify-content: center;
         font-weight: 800; font-size: .95rem; color: #fff;
         flex-shrink: 0;
       }
-      .account-name { font-weight: 700; font-size: .9rem; color: #f1f5f9; }
-      .account-addr { font-size: .75rem; color: #475569; margin-top: 2px; font-family: monospace; }
+      .account-name { font-weight: 700; font-size: .9rem; color: #111827; }
+      .account-addr { font-size: .75rem; color: #6b7280; margin-top: 2px; font-family: monospace; }
       .account-info { flex: 1; }
-      .account-arrow { font-size: 1.2rem; color: #4f46e5; font-weight: 700; }
+      .account-arrow { font-size: 1.2rem; color: #374151; font-weight: 700; }
 
       /* ── Inventory, product, credential, transfer cards ──────── */
       .inventory-item {
-        background: rgba(15,23,42,.6);
-        border: 1px solid rgba(99,102,241,.1);
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
         border-radius: 10px;
         padding: 14px 16px;
         margin-bottom: 10px;
         transition: border-color .15s;
       }
-      .inventory-item.verified { border-color: rgba(16,185,129,.2); }
-      .inventory-item:hover { border-color: rgba(99,102,241,.3); }
+      .inventory-item.verified { border-color: #bbf7d0; }
+      .inventory-item:hover { border-color: #9ca3af; }
 
       .product-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
         padding: 10px 0;
-        border-bottom: 1px solid rgba(255,255,255,.05);
+        border-bottom: 1px solid #f3f4f6;
       }
       .product-row:last-child { border-bottom: none; }
-      .product-name { font-weight: 600; font-size: .9rem; color: #f1f5f9; }
+      .product-name { font-weight: 600; font-size: .9rem; color: #111827; }
 
       .transfer-card {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        background: rgba(245,158,11,.05);
-        border: 1px solid rgba(245,158,11,.2);
+        background: #fffbeb;
+        border: 1px solid #fde68a;
         border-radius: 10px;
         padding: 12px 16px;
         margin-bottom: 8px;
       }
       .transfer-info { flex: 1; }
-      .transfer-from { font-size: .78rem; color: #64748b; margin-top: 3px; }
+      .transfer-from { font-size: .78rem; color: #6b7280; margin-top: 3px; }
 
       .did-banner {
         display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -547,19 +546,19 @@ function Styles() {
       }
       .btn-warning:hover:not(:disabled) { background: rgba(245,158,11,.35); }
       .cred-card {
-        background: rgba(15,23,42,.6);
-        border: 1px solid rgba(99,102,241,.15);
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
         border-radius: 10px;
         padding: 12px 16px;
         margin-bottom: 8px;
       }
-      .cred-card.revoked { border-color: rgba(239,68,68,.2); opacity: .65; }
-      .cred-type { font-weight: 700; font-size: .9rem; color: #a5b4fc; margin-bottom: 4px; }
-      .cred-meta { font-size: .8rem; color: #64748b; margin-top: 2px; }
+      .cred-card.revoked { border-color: #fecaca; opacity: .65; }
+      .cred-type { font-weight: 700; font-size: .9rem; color: #374151; margin-bottom: 4px; }
+      .cred-meta { font-size: .8rem; color: #6b7280; margin-top: 2px; }
       .cred-type-tag {
         display: inline-block;
-        background: rgba(99,102,241,.15);
-        color: #a5b4fc;
+        background: #f3f4f6;
+        color: #374151;
         border-radius: 6px;
         padding: 2px 8px;
         font-size: .73rem;
@@ -567,8 +566,8 @@ function Styles() {
       }
       .revoked-tag {
         display: inline-block;
-        background: rgba(239,68,68,.15);
-        color: #fca5a5;
+        background: #fee2e2;
+        color: #dc2626;
         border-radius: 6px;
         padding: 2px 8px;
         font-size: .72rem;
@@ -580,14 +579,14 @@ function Styles() {
       .ship-panel {
         margin-top: 12px;
         padding: 12px;
-        background: rgba(99,102,241,.05);
-        border: 1px solid rgba(99,102,241,.1);
+        background: #f3f4f6;
+        border: 1px solid #d1d5db;
         border-radius: 8px;
       }
       .ship-panel-title {
         font-size: .78rem;
         font-weight: 700;
-        color: #6366f1;
+        color: #374151;
         margin-bottom: 8px;
         text-transform: uppercase;
         letter-spacing: .04em;
@@ -601,7 +600,7 @@ function Styles() {
         justify-content: space-between;
         gap: 12px;
         padding: 12px 0;
-        border-bottom: 1px solid rgba(255,255,255,.05);
+        border-bottom: 1px solid #f3f4f6;
       }
       .candidate-row:last-of-type { border-bottom: none; }
       .issuer-row {
@@ -609,12 +608,12 @@ function Styles() {
         align-items: center;
         justify-content: space-between;
         padding: 10px 0;
-        border-bottom: 1px solid rgba(255,255,255,.05);
+        border-bottom: 1px solid #f3f4f6;
       }
       .issuer-row:last-child { border-bottom: none; }
 
       /* ── Addr / misc ─────────────────────────────────────────── */
-      .addr-text { font-size: .73rem; color: #475569; font-family: monospace; margin-top: 2px; word-break: break-all; }
+      .addr-text { font-size: .73rem; color: #6b7280; font-family: monospace; margin-top: 2px; word-break: break-all; }
       .empty-state {
         display: flex;
         align-items: center;
@@ -622,19 +621,19 @@ function Styles() {
         gap: 8px;
         padding: 32px 16px;
         font-size: .85rem;
-        color: #334155;
+        color: #9ca3af;
         border-radius: 8px;
-        background: rgba(255,255,255,.02);
-        border: 1px dashed rgba(255,255,255,.07);
+        background: #f9fafb;
+        border: 1px dashed #e5e7eb;
       }
 
       /* ── Scrollbar ───────────────────────────────────────────── */
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #334155; }
+      ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
-      code { background: rgba(99,102,241,.1); padding: 2px 6px; border-radius: 4px; color: #a5b4fc; font-size: .85em; }
+      code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; color: #374151; font-size: .85em; }
     `}</style>
   )
 }
@@ -867,7 +866,7 @@ function VerifyPage({ productId }) {
   }, [productId])
 
   return (
-    <><Styles/><div style={{minHeight:'100vh', background:'#0f172a', color:'#e2e8f0'}}>
+    <><Styles/><div style={{minHeight:'100vh', background:'#f3f4f6', color:'#111827'}}>
       <nav className="navbar">
         <div className="navbar-brand">🔗 DIDLab Supply Chain</div>
         <div className="navbar-right">
@@ -1032,76 +1031,7 @@ function AccountPickerPage({ onConnect }) {
   )
 }
 
-/* ══════════════════════════════════════════════════════════════════ */
-/*  Account Settings — rename or delete local account                  */
-/* ══════════════════════════════════════════════════════════════════ */
-function AccountSettings({ address, onDeleted }) {
-  const [editing,  setEditing]  = useState(false)
-  const [newName,  setNewName]  = useState(getCompany(address) || '')
-  const [showDel,  setShowDel]  = useState(false)
-  const [nameOk,   setNameOk]   = useState('')
-
-  function saveName(e) {
-    e.preventDefault()
-    if (!newName.trim()) return
-    saveCompany(address, newName.trim())
-    setEditing(false)
-    setNameOk(`✅ Name updated to "${newName.trim()}"`)
-    setTimeout(() => setNameOk(''), 3000)
-  }
-
-  function confirmDelete() {
-    try { localStorage.removeItem(`sc_co_${address.toLowerCase()}`) } catch {}
-    try { localStorage.removeItem(`sc_pw_${address.toLowerCase()}`) } catch {}
-    onDeleted()
-  }
-
-  return (
-    <div className="card" style={{marginTop:20, borderColor:'rgba(148,163,184,.2)'}}>
-      <div className="card-title" style={{fontSize:'1rem'}}>⚙️ Account Settings</div>
-      <div style={{display:'flex', flexDirection:'column', gap:10}}>
-        {/* Current name */}
-        <div style={{fontSize:'.85rem', color:'#94a3b8'}}>
-          Display name: <strong style={{color:'#e2e8f0'}}>{getCompany(address) || '(none)'}</strong>
-        </div>
-
-        {nameOk && <Alert type="success">{nameOk}</Alert>}
-
-        {/* Rename */}
-        {!editing ? (
-          <button className="btn btn-outline btn-sm" style={{alignSelf:'flex-start'}} onClick={()=>{setNewName(getCompany(address)||''); setEditing(true)}}>
-            ✏️ Change Company Name
-          </button>
-        ) : (
-          <form onSubmit={saveName} style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-            <input className="form-input" style={{flex:1, minWidth:160}} value={newName}
-              onChange={e=>setNewName(e.target.value)} placeholder="New company name" autoFocus/>
-            <button className="btn btn-success btn-sm" type="submit">Save</button>
-            <button className="btn btn-outline btn-sm" type="button" onClick={()=>setEditing(false)}>Cancel</button>
-          </form>
-        )}
-
-        {/* Delete */}
-        {!showDel ? (
-          <button className="btn btn-sm" style={{alignSelf:'flex-start', background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', color:'#f87171'}}
-            onClick={()=>setShowDel(true)}>
-            🗑️ Delete Local Account
-          </button>
-        ) : (
-          <div style={{background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.3)', borderRadius:10, padding:'12px 14px'}}>
-            <div style={{fontSize:'.85rem', color:'#f87171', marginBottom:10}}>
-              This removes your saved name and password <strong>from this device only</strong>. Your on-chain DID and credentials stay intact. You can re-register a new name next time you log in.
-            </div>
-            <div style={{display:'flex', gap:8}}>
-              <button className="btn btn-danger btn-sm" onClick={confirmDelete}>Yes, Delete</button>
-              <button className="btn btn-outline btn-sm" onClick={()=>setShowDel(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
+/* AccountSettings removed — settings section not needed for research demo */
 
 /* ══════════════════════════════════════════════════════════════════ */
 /*  Set Password + Name (first time for this wallet)                  */
@@ -1611,7 +1541,6 @@ function LocalGovtPage({ signer, address, provider, onLogout }) {
           }
         </div>
       </div>
-      <AccountSettings address={address} onDeleted={onLogout}/>
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -1841,7 +1770,6 @@ function ManufacturerPage({ signer, address, provider, onLogout }) {
           }
         </div>
       </div>
-      <AccountSettings address={address} onDeleted={onLogout}/>
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -2004,7 +1932,6 @@ function DistributorPage({ signer, address, provider, onLogout }) {
             })
         }
       </div>
-      <AccountSettings address={address} onDeleted={onLogout}/>
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -2169,7 +2096,6 @@ function RetailerPage({ signer, address, provider, onLogout }) {
             })
         }
       </div>
-      <AccountSettings address={address} onDeleted={onLogout}/>
       <ProductSearch provider={provider}/>
     </div>
   )

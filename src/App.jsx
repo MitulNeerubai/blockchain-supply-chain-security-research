@@ -5,20 +5,23 @@ import './index.css'
 /* ─── Chain ───────────────────────────────────────────────────────── */
 const CHAIN_ID = 252501
 const ADDR = {
-  trust: '0x6540160Ee1E460e534f9B88882192d2Db35B3ae9',
-  did:   '0x613B1Bc6CdDba7dB262297B2147B9E25c5d5a3e2',
-  cred:  '0xf25f51cA39F2c2A521d5C5cee8Fd0eCFFDCA4A89',
-  pt:    '0xCF6a6FfDb73aA4371Be7d69AfDfe3021c5254825',
-  audit: '0xfB74239F501B8D04F0b049fba474aA0ebf136C4b',
+trust: '0x2fF69fEe1aD40789D700dcaD3Df9B468702D06fE',
+did:   '0xb30137844C86BE25CAad09732b11907546BCE5D1',
+cred:  '0x08516CddCC472305645CA18DE2fAa098C684aC6c',
+pt:    '0x7528B7E32E5811FF108aB88D1d199c147A2D0358',
+audit: '0x2BE9c188aB06d275C743F44C7Dd6683D67D8d4B9',
 }
+
 const ABI = {
   trust: [
     'function rootGA() view returns (address)',
     'function isAuthorizedIssuer(address) view returns (bool)',
     'function authorizeIssuer(address issuer, string role)',
+    'function getIssuerCount() view returns (uint256)',
+    'function getIssuerAt(uint256 index) view returns (address)',
   ],
   did: [
-    'function getDID(address) view returns (string did, string role, address controller, uint256 createdAt, bool active)',
+    'function getDID(address) view returns (tuple(string did, string role, address controller, uint256 createdAt, bool active))',
     'function registerDID(string role)',
     'event DIDRegistered(address indexed controller, string did, string role, uint256 timestamp)',
   ],
@@ -26,7 +29,7 @@ const ABI = {
     'function issueCredential(address holder, string credType, uint256 expiresAt) returns (bytes32)',
     'function verifyCredential(bytes32 credentialId) view returns (bool)',
     'function isCredentialValid(address holder) view returns (bool)',
-    'function getCredential(bytes32 credentialId) view returns (address issuer, address holder, string credType, uint256 expiresAt, bool revoked)',
+    'function getCredential(bytes32 credentialId) view returns (tuple(bytes32 id, address issuer, address holder, string credType, uint256 issuedAt, uint256 expiresAt, bool revoked, uint256 linkedProductId, bool productLinked))',
     'function revokeCredential(bytes32 credentialId)',
     'event CredentialIssued(bytes32 indexed credentialId, address indexed issuer, address indexed holder, string credType, uint256 expiresAt)',
   ],
@@ -34,12 +37,14 @@ const ABI = {
     'function createProduct(string name, string ipfsCID) returns (uint256)',
     'function shipTo(uint256 productId, address recipient)',
     'function confirmReceipt(uint256 productId)',
-    'function getProduct(uint256 productId) view returns (uint256 id, string name, string ipfsCID, address manufacturer, address currentHolder, address pendingRecipient, uint8 status, uint256 createdAt)',
+    'function getProduct(uint256 productId) view returns (tuple(uint256 id, string name, string ipfsCID, address manufacturer, address currentHolder, address pendingRecipient, uint8 status, uint256 createdAt))',
     'function getTransferHistory(uint256 productId) view returns (tuple(address from, address to, uint256 timestamp, bool confirmed)[])',
+    'function getManufacturerProducts(address manufacturer) view returns (uint256[])',
     'function totalProducts() view returns (uint256)',
     'event ProductCreated(uint256 indexed id, address indexed manufacturer, string name)',
     'event ProductShipped(uint256 indexed id, address indexed from, address indexed to)',
     'event ProductReceived(uint256 indexed id, address indexed by)',
+    'event ProductDelivered(uint256 indexed id, address indexed retailer)',
   ],
   audit: [
     'function auditProduct(uint256 productId) view returns (tuple(bool verified, uint256 productId, string productName, string ipfsCID, address manufacturer, address distributor, address retailer, uint256 manufacturedAt, uint256 shippedToDistributor, uint256 shippedToRetailer, string failReason))',
@@ -645,7 +650,7 @@ const getC = signer => ({
 })
 
 /* ─── Chunked log query ───────────────────────────────────────────── */
-async function chunkedLogs(contract, filter, from, to, chunk=5000) {
+async function chunkedLogs(contract, filter, from, to, chunk=2000) {
   const out = []
   for (let b = from; b <= to; b += chunk) {
     try { out.push(...await contract.queryFilter(filter, b, Math.min(b+chunk-1, to))) } catch {}
@@ -656,15 +661,23 @@ async function chunkedLogs(contract, filter, from, to, chunk=5000) {
 /* ─── Role detection ──────────────────────────────────────────────── */
 async function detectRole(address, provider) {
   try {
+    console.log('[detectRole] address:', address)
     const trust = new ethers.Contract(ADDR.trust, ABI.trust, provider)
     const didC  = new ethers.Contract(ADDR.did,   ABI.did,   provider)
     const root  = await trust.rootGA()
+    console.log('[detectRole] rootGA:', root)
     if (root.toLowerCase() === address.toLowerCase()) return 'RootGA'
-    if (await trust.isAuthorizedIssuer(address)) return 'LocalGovt'
+    const isIssuer = await trust.isAuthorizedIssuer(address)
+    console.log('[detectRole] isAuthorizedIssuer:', isIssuer)
+    if (isIssuer) return 'LocalGovt'
     const d = await didC.getDID(address)
+    console.log('[detectRole] getDID result:', d, 'active:', d.active, 'role:', d.role)
     if (d.active && d.role?.trim()) return d.role.trim()
     return null
-  } catch { return null }
+  } catch (e) {
+    console.error('[detectRole] ERROR:', e)
+    return null
+  }
 }
 
 /* ─── Check if address has a valid credential ─────────────────────── */
@@ -679,7 +692,8 @@ async function hasValidCred(address, provider) {
 async function loadActors(provider) {
   const didC   = new ethers.Contract(ADDR.did, ABI.did, provider)
   const latest = await provider.getBlockNumber()
-  const from   = Math.max(0, latest - 200000)
+      console.log('MF block:', latest)
+  const from   = Math.max(0, latest - 2000)
   const logs   = await chunkedLogs(didC, didC.filters.DIDRegistered(), from, latest)
   const seen   = new Set()
   const out    = { Manufacturer:[], Distributor:[], Retailer:[] }
@@ -701,7 +715,7 @@ async function loadActors(provider) {
 async function loadAllRegistered(provider) {
   const didC   = new ethers.Contract(ADDR.did, ABI.did, provider)
   const latest = await provider.getBlockNumber()
-  const from   = Math.max(0, latest - 200000)
+  const from   = Math.max(0, latest - 2000)
   const logs   = await chunkedLogs(didC, didC.filters.DIDRegistered(), from, latest)
   const seen   = new Set()
   const out    = []
@@ -1019,6 +1033,77 @@ function AccountPickerPage({ onConnect }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════ */
+/*  Account Settings — rename or delete local account                  */
+/* ══════════════════════════════════════════════════════════════════ */
+function AccountSettings({ address, onDeleted }) {
+  const [editing,  setEditing]  = useState(false)
+  const [newName,  setNewName]  = useState(getCompany(address) || '')
+  const [showDel,  setShowDel]  = useState(false)
+  const [nameOk,   setNameOk]   = useState('')
+
+  function saveName(e) {
+    e.preventDefault()
+    if (!newName.trim()) return
+    saveCompany(address, newName.trim())
+    setEditing(false)
+    setNameOk(`✅ Name updated to "${newName.trim()}"`)
+    setTimeout(() => setNameOk(''), 3000)
+  }
+
+  function confirmDelete() {
+    try { localStorage.removeItem(`sc_co_${address.toLowerCase()}`) } catch {}
+    try { localStorage.removeItem(`sc_pw_${address.toLowerCase()}`) } catch {}
+    onDeleted()
+  }
+
+  return (
+    <div className="card" style={{marginTop:20, borderColor:'rgba(148,163,184,.2)'}}>
+      <div className="card-title" style={{fontSize:'1rem'}}>⚙️ Account Settings</div>
+      <div style={{display:'flex', flexDirection:'column', gap:10}}>
+        {/* Current name */}
+        <div style={{fontSize:'.85rem', color:'#94a3b8'}}>
+          Display name: <strong style={{color:'#e2e8f0'}}>{getCompany(address) || '(none)'}</strong>
+        </div>
+
+        {nameOk && <Alert type="success">{nameOk}</Alert>}
+
+        {/* Rename */}
+        {!editing ? (
+          <button className="btn btn-outline btn-sm" style={{alignSelf:'flex-start'}} onClick={()=>{setNewName(getCompany(address)||''); setEditing(true)}}>
+            ✏️ Change Company Name
+          </button>
+        ) : (
+          <form onSubmit={saveName} style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+            <input className="form-input" style={{flex:1, minWidth:160}} value={newName}
+              onChange={e=>setNewName(e.target.value)} placeholder="New company name" autoFocus/>
+            <button className="btn btn-success btn-sm" type="submit">Save</button>
+            <button className="btn btn-outline btn-sm" type="button" onClick={()=>setEditing(false)}>Cancel</button>
+          </form>
+        )}
+
+        {/* Delete */}
+        {!showDel ? (
+          <button className="btn btn-sm" style={{alignSelf:'flex-start', background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', color:'#f87171'}}
+            onClick={()=>setShowDel(true)}>
+            🗑️ Delete Local Account
+          </button>
+        ) : (
+          <div style={{background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.3)', borderRadius:10, padding:'12px 14px'}}>
+            <div style={{fontSize:'.85rem', color:'#f87171', marginBottom:10}}>
+              This removes your saved name and password <strong>from this device only</strong>. Your on-chain DID and credentials stay intact. You can re-register a new name next time you log in.
+            </div>
+            <div style={{display:'flex', gap:8}}>
+              <button className="btn btn-danger btn-sm" onClick={confirmDelete}>Yes, Delete</button>
+              <button className="btn btn-outline btn-sm" onClick={()=>setShowDel(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
 /*  Set Password + Name (first time for this wallet)                  */
 /* ══════════════════════════════════════════════════════════════════ */
 function SetPasswordPage({ address, onDone }) {
@@ -1182,19 +1267,32 @@ function RootGAPage({ signer, address, provider }) {
   const [ok,   setOk]   = useState('')
 
   async function load() {
+    console.log("MF load() start")
     setLoading(true)
     try {
       const trustC = new ethers.Contract(ADDR.trust, ABI.trust, provider)
-      const all    = await loadAllRegistered(provider)
-      const issuerList = [], nonIssuer = []
-      for (const u of all) {
-        const isIssuer = await trustC.isAuthorizedIssuer(u.address)
-        if (isIssuer) issuerList.push(u)
-        else          nonIssuer.push(u)
+      const didC   = new ethers.Contract(ADDR.did,   ABI.did,   provider)
+
+      // ── Enumerate authorized LGs directly from TrustRegistry ───────
+      const count = await trustC.getIssuerCount()
+      const issuerList = []
+      for (let i = 0; i < Number(count); i++) {
+        try {
+          const addr = await trustC.getIssuerAt(i)
+          issuerList.push({
+            address: addr,
+            role: 'LocalGovt',
+            company: displayName(addr),
+          })
+        } catch(e) { console.error("getCredential error:", e.message) }
       }
       setIssuers(issuerList)
-      setAllUsers(nonIssuer)
-    } catch {}
+
+      // ── Load non-LG registered users (candidates for authorization) ─
+      const issuerSet = new Set(issuerList.map(lg => lg.address.toLowerCase()))
+      const all = await loadAllRegistered(provider)
+      setAllUsers(all.filter(u => !issuerSet.has(u.address.toLowerCase())))
+    } catch(e) { console.error('RootGA load error:', e) }
     setLoading(false)
   }
 
@@ -1206,6 +1304,13 @@ function RootGAPage({ signer, address, provider }) {
     try {
       const addr = targetAddr.trim()
       if (!ethers.isAddress(addr)) throw new Error('Invalid wallet address.')
+      // Check if already authorized
+      const trustC = new ethers.Contract(ADDR.trust, ABI.trust, provider)
+      const alreadyAuth = await trustC.isAuthorizedIssuer(addr)
+      if (alreadyAuth) {
+        setErr(`❌ This wallet is already authorized as Local Government.`)
+        setBusy(b=>({...b, [key]:false})); return
+      }
       const C  = getC(signer)
       const tx = await C.trust.authorizeIssuer(addr, 'LocalGovt')
       setOk('Confirming…'); await tx.wait()
@@ -1308,7 +1413,7 @@ function RootGAPage({ signer, address, provider }) {
 /* ══════════════════════════════════════════════════════════════════ */
 /*  Local Government Dashboard                                        */
 /* ══════════════════════════════════════════════════════════════════ */
-function LocalGovtPage({ signer, address, provider }) {
+function LocalGovtPage({ signer, address, provider, onLogout }) {
   const [actors,      setActors]  = useState({ Manufacturer:[], Distributor:[], Retailer:[] })
   const [holder,      setHolder]  = useState('')
   const [credType,    setCredType]= useState('ManufacturingLicense')
@@ -1322,6 +1427,7 @@ function LocalGovtPage({ signer, address, provider }) {
   const [ok,   setOk]   = useState('')
 
   async function load() {
+    console.log("MF load() start")
     setLoading(true)
     try {
       // Check LG DID and load actors in parallel
@@ -1334,17 +1440,18 @@ function LocalGovtPage({ signer, address, provider }) {
       if (didInfo.status === 'fulfilled') setLgDid(didInfo.value.active === true)
       else setLgDid(false)
 
-      // Load issued credentials — use shorter range for speed
+      // Load issued credentials — scan all blocks from genesis
       const credC  = new ethers.Contract(ADDR.cred, ABI.cred, provider)
       const latest = await provider.getBlockNumber()
-      const from   = Math.max(0, latest - 50000)
-      const logs   = await chunkedLogs(credC, credC.filters.CredentialIssued(null, address), from, latest)
+      const from   = Math.max(0, latest - 10000)
+      const logs   = await chunkedLogs(credC, credC.filters.CredentialIssued(), from, latest)
       const creds  = []
+      console.log("LG cred logs found:", logs.length)
       for (const log of [...logs].reverse()) {
         try {
           const c = await credC.getCredential(log.args.credentialId)
           creds.push({ id: log.args.credentialId, holder: c.holder, type: c.credType, expires: c.expiresAt, revoked: c.revoked })
-        } catch {}
+        } catch(e) { console.error("getCredential error:", e.message) }
       }
       setIC(creds)
     } catch(e) { console.error('LG load error', e) }
@@ -1369,11 +1476,32 @@ function LocalGovtPage({ signer, address, provider }) {
     e.preventDefault(); setErr(''); setOk(''); setBusy(true)
     try {
       if (!ethers.isAddress(holder.trim())) throw new Error('Please enter a valid wallet address.')
+      const addr   = holder.trim()
+      const didC   = new ethers.Contract(ADDR.did,  ABI.did,  provider)
+      const credC  = new ethers.Contract(ADDR.cred, ABI.cred, provider)
+
+      // Check holder has a registered active DID
+      let holderDid
+      try { holderDid = await didC.getDID(addr) } catch {}
+      if (!holderDid || !holderDid.active) {
+        setErr(`❌ This wallet has not registered a DID. They must register their DID before receiving credentials.`)
+        setBusy(false); return
+      }
+
+      // Check for any existing active credential — one credential per wallet
+      try {
+        const hasActiveCred = await credC.isCredentialValid(addr)
+        if (hasActiveCred) {
+          setErr(`❌ ${displayName(addr)} already has an active credential. Revoke it first before issuing a new one.`)
+          setBusy(false); return
+        }
+      } catch(dupErr) { console.error('Credential check failed:', dupErr) }
+
       const expires = Math.floor(Date.now()/1000) + Number(days)*86400
       const C       = getC(signer)
-      const tx      = await C.cred.issueCredential(holder.trim(), credType, expires)
+      const tx      = await C.cred.issueCredential(addr, credType, expires)
       setOk('Confirming on blockchain…'); await tx.wait()
-      setOk(`✅ Credential issued to ${displayName(holder.trim())}!`)
+      setOk(`✅ Credential issued to ${displayName(addr)}!`)
       setHolder(''); load()
     } catch(e) { setErr(e.message?.includes('valid wallet') ? e.message : errMsg(e)) }
     setBusy(false)
@@ -1432,8 +1560,6 @@ function LocalGovtPage({ signer, address, provider }) {
               <select className="form-select" value={credType} onChange={e=>setCredType(e.target.value)}>
                 <option value="ManufacturingLicense">Manufacturing License</option>
                 <option value="TradeLicense">Trade License</option>
-                <option value="GovtAuthority">Government Authority</option>
-                <option value="DistributionLicense">Distribution License</option>
                 <option value="RetailLicense">Retail License</option>
               </select>
             </div>
@@ -1485,6 +1611,7 @@ function LocalGovtPage({ signer, address, provider }) {
           }
         </div>
       </div>
+      <AccountSettings address={address} onDeleted={onLogout}/>
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -1493,7 +1620,7 @@ function LocalGovtPage({ signer, address, provider }) {
 /* ══════════════════════════════════════════════════════════════════ */
 /*  Manufacturer Dashboard                                            */
 /* ══════════════════════════════════════════════════════════════════ */
-function ManufacturerPage({ signer, address, provider }) {
+function ManufacturerPage({ signer, address, provider, onLogout }) {
   const [products,  setProducts]  = useState([])
   const [actors,    setActors]    = useState({ Distributor:[] })
   const [hasCred,   setHasCred]   = useState(null)
@@ -1508,26 +1635,40 @@ function ManufacturerPage({ signer, address, provider }) {
   async function load() {
     setLoading(true)
     try {
-      const ptC    = new ethers.Contract(ADDR.pt, ABI.pt, provider)
-      const latest = await provider.getBlockNumber()
-      const from   = Math.max(0, latest - 200000)
-      const logs   = await chunkedLogs(ptC, ptC.filters.ProductCreated(null, address), from, latest)
-      const prods  = []
-      for (const log of [...logs].reverse()) {
+      const ptC  = new ethers.Contract(ADDR.pt,  ABI.pt,  provider)
+      const didC = new ethers.Contract(ADDR.did, ABI.did, provider)
+
+      // Use getManufacturerProducts — reliable, no block-window limit
+      const ids   = await ptC.getManufacturerProducts(address)
+      const prods = []
+      for (const id of [...ids].reverse()) {
         try {
-          const p = await ptC.getProduct(log.args.id)
-          if (p.id.toString() !== '0') {
-            const history = await ptC.getTransferHistory(log.args.id)
-            prods.push({ id: log.args.id, name: p.name, holder: p.currentHolder, status: p.status, history })
-          }
-        } catch {}
+          const p = await ptC.getProduct(id)
+          if (p.id.toString() === '0') continue
+          const statusNum   = Number(p.status)
+          const holderAddr  = p.currentHolder
+          const pendingAddr = p.pendingRecipient
+
+          // Resolve location label from DID registry
+          let locationLabel = ''
+          try {
+            if (statusNum === 1 && pendingAddr !== ethers.ZeroAddress) {
+              const doc = await didC.getDID(pendingAddr)
+              locationLabel = doc.active && doc.role?.trim() ? `→ ${doc.role.trim()}` : '→ …'
+            } else if (statusNum === 0 && holderAddr.toLowerCase() !== address.toLowerCase()) {
+              const doc = await didC.getDID(holderAddr)
+              locationLabel = doc.active && doc.role?.trim() ? `at ${doc.role.trim()}` : 'at partner'
+            }
+          } catch {}
+
+          prods.push({ id, name: p.name, holder: holderAddr, pendingRecipient: pendingAddr, status: p.status, locationLabel })
+        } catch(e) { console.error('getProduct error:', e.message) }
       }
       setProducts(prods)
-      const a = await loadActors(provider)
-      setActors(a)
-      const cred = await hasValidCred(address, provider)
+      const [actors, cred] = await Promise.all([loadActors(provider), hasValidCred(address, provider)])
+      setActors(actors)
       setHasCred(cred)
-    } catch {}
+    } catch(e) { console.error('Manufacturer load error:', e) }
     setLoading(false)
   }
 
@@ -1538,7 +1679,7 @@ function ManufacturerPage({ signer, address, provider }) {
     try {
       if (!newName.trim()) throw new Error('Please enter a product name.')
       const C       = getC(signer)
-      const tx      = await C.pt.createProduct(newName.trim(), '')
+      const tx      = await C.pt.createProduct(newName.trim(), 'ipfs://pending')
       setOk('Creating product on blockchain…')
       const receipt = await tx.wait()
       let pid = null
@@ -1546,7 +1687,7 @@ function ManufacturerPage({ signer, address, provider }) {
         try {
           const p = C.pt.interface.parseLog(log)
           if (p?.name === 'ProductCreated') { pid = p.args.id; break }
-        } catch {}
+        } catch(e) { console.error("getCredential error:", e.message) }
       }
       const name = newName.trim()
       setOk(`✅ "${name}" created! Product ID: #${pid?.toString() || '?'}`)
@@ -1576,9 +1717,10 @@ function ManufacturerPage({ signer, address, provider }) {
   const setField = (id, field, val) =>
     setShipForm(s=>({...s, [id.toString()]: {...(s[id.toString()]||{}), [field]:val}}))
 
-  const myProds      = products.filter(p => p.holder.toLowerCase()===address.toLowerCase() && Number(p.status)===0)
-  const inTransit    = products.filter(p => Number(p.status)===1)
-  const shippedProds = products.filter(p => p.holder.toLowerCase()!==address.toLowerCase() && Number(p.status)!==1)
+  const myProds   = products.filter(p => p.holder.toLowerCase()===address.toLowerCase() && Number(p.status)===0)
+  const inTransit = products.filter(p => Number(p.status)===1)
+  const atPartner = products.filter(p => p.holder.toLowerCase()!==address.toLowerCase() && Number(p.status)===0)
+  const delivered = products.filter(p => Number(p.status)===2)
 
   return (
     <div className="page">
@@ -1624,7 +1766,7 @@ function ManufacturerPage({ signer, address, provider }) {
           <div style={{height:6}}/>
           {loading
             ? <div className="empty-state"><Spin size={20}/> Loading…</div>
-            : myProds.length===0 && inTransit.length===0 && shippedProds.length===0
+            : myProds.length===0 && inTransit.length===0 && atPartner.length===0 && delivered.length===0
               ? <div className="empty-state">No products yet — create your first one</div>
               : <>
                 {myProds.map((p,i) => {
@@ -1663,20 +1805,35 @@ function ManufacturerPage({ signer, address, provider }) {
                   <div key={i} className="product-row">
                     <div>
                       <div className="product-name">{p.name}</div>
-                      <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>ID #{p.id.toString()} · awaiting confirmation</div>
+                      <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>
+                        ID #{p.id.toString()} · In Transit {p.locationLabel}
+                      </div>
                     </div>
-                    <span className="status-badge status-transit">In Transit</span>
+                    <span className="status-badge status-transit">🚚 In Transit</span>
                   </div>
                 ))}
-                {shippedProds.map((p,i) => (
+                {atPartner.map((p,i) => (
                   <div key={i} className="product-row">
                     <div>
                       <div className="product-name">{p.name}</div>
-                      <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>ID #{p.id.toString()} · delivered</div>
+                      <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>
+                        ID #{p.id.toString()} · {p.locationLabel || 'at partner'}
+                      </div>
+                    </div>
+                    <span className="status-badge" style={{background:'rgba(59,130,246,.15)', color:'#93c5fd', border:'1px solid rgba(59,130,246,.3)'}}>
+                      📦 At {p.locationLabel?.replace('at ','')||'Partner'}
+                    </span>
+                  </div>
+                ))}
+                {delivered.map((p,i) => (
+                  <div key={i} className="product-row">
+                    <div>
+                      <div className="product-name">{p.name}</div>
+                      <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>ID #{p.id.toString()} · chain complete</div>
                     </div>
                     <div style={{display:'flex', gap:6, alignItems:'center'}}>
                       <button className="btn btn-outline btn-sm" onClick={()=>setQrProduct({id:p.id, name:p.name})}>🔳 QR</button>
-                      <span className="status-badge status-done">Delivered</span>
+                      <span className="status-badge status-done">✅ Delivered</span>
                     </div>
                   </div>
                 ))}
@@ -1684,6 +1841,7 @@ function ManufacturerPage({ signer, address, provider }) {
           }
         </div>
       </div>
+      <AccountSettings address={address} onDeleted={onLogout}/>
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -1692,10 +1850,11 @@ function ManufacturerPage({ signer, address, provider }) {
 /* ══════════════════════════════════════════════════════════════════ */
 /*  Distributor Dashboard                                             */
 /* ══════════════════════════════════════════════════════════════════ */
-function DistributorPage({ signer, address, provider }) {
+function DistributorPage({ signer, address, provider, onLogout }) {
   const [pending,   setPending]  = useState([])
   const [inventory, setInv]      = useState([])
   const [actors,    setActors]   = useState({ Retailer:[] })
+  const [hasCred,   setHasCred]  = useState(null)
   const [shipForm,  setShipForm] = useState({})
   const [busy,      setBusy]     = useState({})
   const [loading,   setLoading]  = useState(true)
@@ -1703,11 +1862,12 @@ function DistributorPage({ signer, address, provider }) {
   const [ok,   setOk]   = useState('')
 
   async function load() {
+    console.log("MF load() start")
     setLoading(true)
     try {
       const ptC    = new ethers.Contract(ADDR.pt, ABI.pt, provider)
       const latest = await provider.getBlockNumber()
-      const from   = Math.max(0, latest - 200000)
+      const from   = Math.max(0, latest - 2000)
 
       // Find products shipped TO me
       const shippedLogs  = await chunkedLogs(ptC, ptC.filters.ProductShipped(null, null, address), from, latest)
@@ -1725,12 +1885,14 @@ function DistributorPage({ signer, address, provider }) {
             inv.push({ id: log.args.id, name: p.name, status: p.status })
           else if (!receivedIds.has(id) && p.pendingRecipient.toLowerCase() === address.toLowerCase())
             pend.push({ id: log.args.id, name: p.name, from: log.args.from })
-        } catch {}
+        } catch(e) { console.error("getCredential error:", e.message) }
       }
       setPending(pend); setInv(inv)
       const a = await loadActors(provider)
       setActors(a)
-    } catch {}
+      const cred = await hasValidCred(address, provider)
+      setHasCred(cred)
+    } catch(e) { console.error('Distributor load error:', e) }
     setLoading(false)
   }
 
@@ -1768,6 +1930,7 @@ function DistributorPage({ signer, address, provider }) {
   return (
     <div className="page">
       <h2 className="page-title">🚚 Distributor Dashboard</h2>
+      {hasCred === false && <Alert type="warning">No active credential found. Contact your Local Government to get one before accepting or shipping products.</Alert>}
       {err && <Alert type="error" onClose={()=>setErr('')}>{err}</Alert>}
       {ok  && <Alert type="success" onClose={()=>setOk('')}>{ok}</Alert>}
 
@@ -1816,10 +1979,12 @@ function DistributorPage({ signer, address, provider }) {
                     <div>
                       <strong style={{fontSize:'.95rem'}}>{p.name}</strong>
                       <span className="cred-type-tag" style={{marginLeft:8}}>ID #{key}</span>
-                    </div>
-                    <span className="status-badge status-stock">In Stock</span>
+                    </div>                    
+                    {Number(p.status)===0
+                    ? <span className="status-badge status-stock">In Stock</span>
+                    : <span className="status-badge status-transit">In Transit</span>}
                   </div>
-                  <div className="ship-panel">
+                  {Number(p.status)===0 && <div className="ship-panel">
                     <div className="ship-panel-title">🚚 Ship to Retailer</div>
                     <div className="ship-row">
                       <select className="form-select form-select-sm" style={{flex:1, minWidth:140}}
@@ -1833,12 +1998,13 @@ function DistributorPage({ signer, address, provider }) {
                         {busy['ship_'+key] ? <Spin/> : 'Ship →'}
                       </button>
                     </div>
-                  </div>
+                  </div>}
                 </div>
               )
             })
         }
       </div>
+      <AccountSettings address={address} onDeleted={onLogout}/>
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -1847,9 +2013,10 @@ function DistributorPage({ signer, address, provider }) {
 /* ══════════════════════════════════════════════════════════════════ */
 /*  Retailer Dashboard                                                */
 /* ══════════════════════════════════════════════════════════════════ */
-function RetailerPage({ signer, address, provider }) {
+function RetailerPage({ signer, address, provider, onLogout }) {
   const [pending,   setPending]  = useState([])
   const [inventory, setInv]      = useState([])
+  const [hasCred,   setHasCred]  = useState(null)
   const [auditMap,  setAuditMap] = useState({})
   const [busy,      setBusy]     = useState({})
   const [loading,   setLoading]  = useState(true)
@@ -1858,11 +2025,12 @@ function RetailerPage({ signer, address, provider }) {
   const [qrProduct, setQrProduct] = useState(null)
 
   async function load() {
+    console.log("MF load() start")
     setLoading(true)
     try {
       const ptC    = new ethers.Contract(ADDR.pt, ABI.pt, provider)
       const latest = await provider.getBlockNumber()
-      const from   = Math.max(0, latest - 200000)
+      const from   = Math.max(0, latest - 2000)
 
       const shippedLogs  = await chunkedLogs(ptC, ptC.filters.ProductShipped(null, null, address), from, latest)
       const receivedLogs = await chunkedLogs(ptC, ptC.filters.ProductReceived(null, address), from, latest)
@@ -1879,10 +2047,12 @@ function RetailerPage({ signer, address, provider }) {
             inv.push({ id: log.args.id, name: p.name })
           else if (!receivedIds.has(id) && p.pendingRecipient.toLowerCase() === address.toLowerCase())
             pend.push({ id: log.args.id, name: p.name, from: log.args.from })
-        } catch {}
+        } catch(e) { console.error("getCredential error:", e.message) }
       }
       setPending(pend); setInv(inv)
-    } catch {}
+      const cred = await hasValidCred(address, provider)
+      setHasCred(cred)
+    } catch(e) { console.error('Retailer load error:', e) }
     setLoading(false)
   }
 
@@ -1914,6 +2084,7 @@ function RetailerPage({ signer, address, provider }) {
   return (
     <div className="page">
       <h2 className="page-title">🏪 Retailer Dashboard</h2>
+      {hasCred === false && <Alert type="warning">No active credential found. Contact your Local Government to get one before accepting products.</Alert>}
       {err && <Alert type="error" onClose={()=>setErr('')}>{err}</Alert>}
       {ok  && <Alert type="success" onClose={()=>setOk('')}>{ok}</Alert>}
 
@@ -1998,6 +2169,7 @@ function RetailerPage({ signer, address, provider }) {
             })
         }
       </div>
+      <AccountSettings address={address} onDeleted={onLogout}/>
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -2072,10 +2244,10 @@ export default function App() {
       {styles}
       {navbar}
       {role==='RootGA'       && <RootGAPage       signer={signer} address={address} provider={provider}/>}
-      {role==='LocalGovt'    && <LocalGovtPage    signer={signer} address={address} provider={provider}/>}
-      {role==='Manufacturer' && <ManufacturerPage signer={signer} address={address} provider={provider}/>}
-      {role==='Distributor'  && <DistributorPage  signer={signer} address={address} provider={provider}/>}
-      {role==='Retailer'     && <RetailerPage     signer={signer} address={address} provider={provider}/>}
+      {role==='LocalGovt'    && <LocalGovtPage    signer={signer} address={address} provider={provider} onLogout={logout}/>}
+      {role==='Manufacturer' && <ManufacturerPage signer={signer} address={address} provider={provider} onLogout={logout}/>}
+      {role==='Distributor'  && <DistributorPage  signer={signer} address={address} provider={provider} onLogout={logout}/>}
+      {role==='Retailer'     && <RetailerPage     signer={signer} address={address} provider={provider} onLogout={logout}/>}
     </>
   )
 }

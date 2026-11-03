@@ -2,14 +2,13 @@
   "name": "blockchain-supply-chain",
   "version": "1.0.0",
   "description": "Blockchain Supply Chain Security Research",
-  "scripts": {
-    "test": "hardhat test"
-  },
+  "scripts": { "test": "hardhat test" },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "hardhat": "^2.22.0"
   },
   "dependencies": {
+    "@openzeppelin/contracts": "^4.9.6",
     "dotenv": "^18.0.8"
   }
 }

@@ -1,12 +1,12 @@
 import http from 'http'
 import tls  from 'tls'
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, createReadStream } from 'fs'
 import { fileURLToPath } from 'url'
-import { dirname, join } from 'path'
+import { dirname, join, extname } from 'path'
 
-const __dirname  = dirname(fileURLToPath(import.meta.url))
+const __dirname   = dirname(fileURLToPath(import.meta.url))
 const EMAILS_PATH = join(__dirname, 'emails.json')
-const PORT        = 3001
+const PORT        = parseInt(process.env.APP_PORT) || 3001
 
 // ─── Load .env manually (no dotenv needed) ───────────────────────────────────
 function loadEnv() {
@@ -82,13 +82,13 @@ function sendOTPEmail(to, otp, role) {
     sock.on('data', chunk => {
       buf += chunk.toString()
       const lines = buf.split('\r\n')
-      buf = lines.pop()  // keep any incomplete line
+      buf = lines.pop()
 
       for (const line of lines) {
         if (!line) continue
         const code   = parseInt(line.slice(0, 3), 10)
-        const isLast = line[3] !== '-'  // "250 " is last; "250-" is continuation
-        if (!isLast) continue           // wait for final line of multi-line response
+        const isLast = line[3] !== '-'
+        if (!isLast) continue
 
         console.log(`[smtp ←] ${line}`)
 
@@ -128,6 +128,7 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:3000',
   'http://localhost:5174',
+  'https://mitul.didlab.org',
 ]
 
 function setCORS(req, res) {
@@ -172,12 +173,12 @@ async function handleVerifyOTP(req, res) {
   if (!email || !role || !otp) return jsonResp(res, 400, { error: 'Missing fields.' })
   cleanOTPs()
   const rec = otpStore[email]
-  if (!rec)                   return jsonResp(res, 400, { error: 'No OTP found for this email. Request a new code.' })
+  if (!rec)                       return jsonResp(res, 400, { error: 'No OTP found for this email. Request a new code.' })
   if (Date.now() > rec.expiresAt) {
     delete otpStore[email]
     return jsonResp(res, 400, { error: 'OTP expired. Request a new code.' })
   }
-  if (rec.role !== role)      return jsonResp(res, 400, { error: 'Role mismatch.' })
+  if (rec.role !== role)          return jsonResp(res, 400, { error: 'Role mismatch.' })
   if (rec.otp !== String(otp).trim()) return jsonResp(res, 400, { error: 'Incorrect code. Try again.' })
   const emails = readEmails()
   emails[role] = email
@@ -188,13 +189,23 @@ async function handleVerifyOTP(req, res) {
 }
 
 // ─── Main server ──────────────────────────────────────────────────────────────
+const MIME = {
+  '.html': 'text/html',
+  '.js':   'application/javascript',
+  '.css':  'text/css',
+  '.svg':  'image/svg+xml',
+  '.ico':  'image/x-icon',
+  '.png':  'image/png',
+}
+
 const server = http.createServer(async (req, res) => {
   setCORS(req, res)
 
-  // Preflight
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
 
-  const url = req.url?.split('?')[0] ?? ''
+  // nginx strips /api/ prefix before forwarding — normalize it back
+  const _u  = req.url?.split('?')[0] ?? ''
+  const url = _u.startsWith('/api') ? _u : '/api' + _u
 
   try {
     if (req.method === 'POST' && url === '/api/email/send-otp')   return await handleSendOTP(req, res)
@@ -206,6 +217,23 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && m) {
       const emails = readEmails()
       return jsonResp(res, 200, { role: m[1], email: emails[m[1]] || '' })
+    }
+
+    // Serve static files (fallback when no nginx in front)
+    const staticFile = join(__dirname, 'public', _u === '/' ? 'index.html' : _u)
+    if (existsSync(staticFile)) {
+      const mime = MIME[extname(staticFile)] || 'application/octet-stream'
+      res.writeHead(200, { 'Content-Type': mime })
+      createReadStream(staticFile).pipe(res)
+      return
+    }
+
+    // SPA fallback
+    if (!url.startsWith('/api')) {
+      const idx = join(__dirname, 'public', 'index.html')
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      createReadStream(idx).pipe(res)
+      return
     }
 
     jsonResp(res, 404, { error: 'Not found' })

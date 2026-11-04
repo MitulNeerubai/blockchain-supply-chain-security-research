@@ -1,21 +1,3 @@
-/**
- * server.js — Supply Chain Email OTP Server
- * Zero npm dependencies — uses only Node.js built-in modules.
- *
- * Setup:
- *   1. Create .env next to this file:
- *        GMAIL_USER=supplychain.ssi1@gmail.com
- *        GMAIL_PASS=put ur app password here
- *   2. Run: node server.js
- *   3. Server runs on http://localhost:3001
- *
- * Endpoints:
- *   POST /api/email/send-otp   { email, role }
- *   POST /api/email/verify-otp { email, role, otp }
- *   GET  /api/emails
- *   GET  /api/email/:role
- */
-
 import http from 'http'
 import tls  from 'tls'
 import { readFileSync, writeFileSync, existsSync } from 'fs'

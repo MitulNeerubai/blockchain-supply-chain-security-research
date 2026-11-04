@@ -2,13 +2,14 @@
 pragma solidity ^0.8.24;
 
 interface IProductTransfer {
-    enum Status { InStock, InTransit, Delivered }
+    enum Status { InStock, InTransit, Delivered, Cancelled }
 
     struct TransferRecord {
         address from;
         address to;
         uint256 timestamp;
         bool    confirmed;
+        bool    cancelled;
     }
 
     struct Product {
@@ -41,17 +42,10 @@ interface IDIDRegistry {
     function getDID(address controller) external view returns (DIDDocument memory);
 }
 
-/**
- * @title TraceabilityAudit
- * @notice Verifies that a product has completed the full MF → DT → RT supply chain.
- *         All parties must have valid credentials and DIDs.
- *         Returns a structured audit result — shown as "Chain Verified ✅" in the UI.
- */
 contract TraceabilityAudit {
 
-    // ─── Structs ──────────────────────────────────────────────────────────────
     struct AuditResult {
-        bool    verified;           // true only when full chain is valid
+        bool    verified;
         uint256 productId;
         string  productName;
         string  ipfsCID;
@@ -61,15 +55,13 @@ contract TraceabilityAudit {
         uint256 manufacturedAt;
         uint256 shippedToDistributor;
         uint256 shippedToRetailer;
-        string  failReason;         // empty when verified = true
+        string  failReason;
     }
 
-    // ─── State ────────────────────────────────────────────────────────────────
     IProductTransfer    public immutable productTransfer;
     ICredentialRegistry public immutable credRegistry;
     IDIDRegistry        public immutable didRegistry;
 
-    // ─── Constructor ──────────────────────────────────────────────────────────
     constructor(
         address _productTransfer,
         address _credRegistry,
@@ -80,13 +72,6 @@ contract TraceabilityAudit {
         didRegistry     = IDIDRegistry(_didRegistry);
     }
 
-    // ─── External ─────────────────────────────────────────────────────────────
-
-    /**
-     * @notice Audit a product's full supply chain.
-     * @param productId  The product ID to audit.
-     * @return result    Structured audit result.
-     */
     function auditProduct(uint256 productId)
         external
         view
@@ -94,7 +79,6 @@ contract TraceabilityAudit {
     {
         result.productId = productId;
 
-        // ── 1. Load product ──────────────────────────────────────────────────
         IProductTransfer.Product memory p;
         try productTransfer.getProduct(productId) returns (IProductTransfer.Product memory _p) {
             p = _p;
@@ -109,7 +93,6 @@ contract TraceabilityAudit {
         result.manufacturer   = p.manufacturer;
         result.manufacturedAt = p.createdAt;
 
-        // ── 2. Load transfer history ─────────────────────────────────────────
         IProductTransfer.TransferRecord[] memory history;
         try productTransfer.getTransferHistory(productId) returns (
             IProductTransfer.TransferRecord[] memory _h
@@ -121,35 +104,35 @@ contract TraceabilityAudit {
             return result;
         }
 
-        // ── 3. Need at least 2 confirmed transfers (MF→DT, DT→RT) ───────────
-        if (history.length < 2) {
+        // Find first two confirmed, non-cancelled transfers (skips cancelled attempts)
+        IProductTransfer.TransferRecord memory mfToDt;
+        IProductTransfer.TransferRecord memory dtToRt;
+        uint256 confirmedCount = 0;
+
+        for (uint256 i = 0; i < history.length; i++) {
+            if (history[i].confirmed && !history[i].cancelled) {
+                if (confirmedCount == 0) {
+                    mfToDt = history[i];
+                    confirmedCount++;
+                } else if (confirmedCount == 1) {
+                    dtToRt = history[i];
+                    confirmedCount++;
+                    break;
+                }
+            }
+        }
+
+        if (confirmedCount < 2) {
             result.verified   = false;
             result.failReason = "Incomplete chain: product has not reached retailer yet";
             return result;
         }
 
-        // First confirmed transfer: MF → DT
-        IProductTransfer.TransferRecord memory mfToDt = history[0];
-        if (!mfToDt.confirmed) {
-            result.verified   = false;
-            result.failReason = "First transfer (MF -> DT) not yet confirmed by distributor";
-            return result;
-        }
-
-        // Second confirmed transfer: DT → RT
-        IProductTransfer.TransferRecord memory dtToRt = history[1];
-        if (!dtToRt.confirmed) {
-            result.verified   = false;
-            result.failReason = "Second transfer (DT -> RT) not yet confirmed by retailer";
-            return result;
-        }
-
-        result.distributor         = mfToDt.to;
-        result.retailer            = dtToRt.to;
+        result.distributor          = mfToDt.to;
+        result.retailer             = dtToRt.to;
         result.shippedToDistributor = mfToDt.timestamp;
-        result.shippedToRetailer   = dtToRt.timestamp;
+        result.shippedToRetailer    = dtToRt.timestamp;
 
-        // ── 4. Verify chain continuity (MF → DT → RT, no skips) ─────────────
         if (mfToDt.from != p.manufacturer) {
             result.verified   = false;
             result.failReason = "Chain broken: first transfer not from original manufacturer";
@@ -161,7 +144,6 @@ contract TraceabilityAudit {
             return result;
         }
 
-        // ── 5. Verify credentials for all three parties ───────────────────────
         if (!credRegistry.isCredentialValid(p.manufacturer)) {
             result.verified   = false;
             result.failReason = "Manufacturer credential is not valid";
@@ -178,10 +160,9 @@ contract TraceabilityAudit {
             return result;
         }
 
-        // ── 6. Verify DID roles ───────────────────────────────────────────────
-        IDIDRegistry.DIDDocument memory mfDoc  = didRegistry.getDID(p.manufacturer);
-        IDIDRegistry.DIDDocument memory dtDoc  = didRegistry.getDID(result.distributor);
-        IDIDRegistry.DIDDocument memory rtDoc  = didRegistry.getDID(result.retailer);
+        IDIDRegistry.DIDDocument memory mfDoc = didRegistry.getDID(p.manufacturer);
+        IDIDRegistry.DIDDocument memory dtDoc = didRegistry.getDID(result.distributor);
+        IDIDRegistry.DIDDocument memory rtDoc = didRegistry.getDID(result.retailer);
 
         if (!mfDoc.active || keccak256(bytes(mfDoc.role)) != keccak256(bytes("Manufacturer"))) {
             result.verified   = false;
@@ -199,15 +180,11 @@ contract TraceabilityAudit {
             return result;
         }
 
-        // ── All checks passed ─────────────────────────────────────────────────
         result.verified   = true;
         result.failReason = "";
         return result;
     }
 
-    /**
-     * @notice Quick boolean check — use this for the UI badge.
-     */
     function isVerified(uint256 productId) external view returns (bool) {
         AuditResult memory r = this.auditProduct(productId);
         return r.verified;

@@ -5,11 +5,11 @@ import './index.css'
 /* ─── Chain ───────────────────────────────────────────────────────── */
 const CHAIN_ID = 252501
 const ADDR = {
-trust: '0x2fF69fEe1aD40789D700dcaD3Df9B468702D06fE',
-did:   '0xb30137844C86BE25CAad09732b11907546BCE5D1',
-cred:  '0x08516CddCC472305645CA18DE2fAa098C684aC6c',
-pt:    '0x7528B7E32E5811FF108aB88D1d199c147A2D0358',
-audit: '0x2BE9c188aB06d275C743F44C7Dd6683D67D8d4B9',
+  trust: '0xebb08092bB30ba254fb5c0268b1b55d3b57E0006',
+  did:   '0x69c5b83617A11bB59c2585900E5E07fd0212A13e',
+  cred:  '0x1F2Ae189038347cfEfF196C4CFF4f478fD4e2d55',
+  pt:    '0x17ED77CDC9C3239a755AC0115eB67937526642E4',
+  audit: '0x30191C6502C49a997bEA3fAD6FF120749AC7CF0b',
 }
 
 const ABI = {
@@ -37,14 +37,22 @@ const ABI = {
     'function createProduct(string name, string ipfsCID) returns (uint256)',
     'function shipTo(uint256 productId, address recipient)',
     'function confirmReceipt(uint256 productId)',
+    'function cancelShipment(uint256 productId)',
+    'function reclaimProduct(uint256 productId)',
+    'function forceRecall(uint256 productId)',
     'function getProduct(uint256 productId) view returns (tuple(uint256 id, string name, string ipfsCID, address manufacturer, address currentHolder, address pendingRecipient, uint8 status, uint256 createdAt))',
-    'function getTransferHistory(uint256 productId) view returns (tuple(address from, address to, uint256 timestamp, bool confirmed)[])',
+    'function getTransferHistory(uint256 productId) view returns (tuple(address from, address to, uint256 timestamp, bool confirmed, bool cancelled)[])',
     'function getManufacturerProducts(address manufacturer) view returns (uint256[])',
+    'function getHolderProducts(address holder) view returns (uint256[])',
     'function totalProducts() view returns (uint256)',
     'event ProductCreated(uint256 indexed id, address indexed manufacturer, string name)',
     'event ProductShipped(uint256 indexed id, address indexed from, address indexed to)',
     'event ProductReceived(uint256 indexed id, address indexed by)',
     'event ProductDelivered(uint256 indexed id, address indexed retailer)',
+    'event ShipmentCancelled(uint256 indexed id, address indexed by, address indexed recipient)',
+    'event ProductCancelled(uint256 indexed id, address indexed holder)',
+    'event ProductReclaimed(uint256 indexed id, address indexed from, address indexed to)',
+    'event ProductForceRecalled(uint256 indexed id, address indexed by, address indexed from)',
   ],
   audit: [
     'function auditProduct(uint256 productId) view returns (tuple(bool verified, uint256 productId, string productName, string ipfsCID, address manufacturer, address distributor, address retailer, uint256 manufacturedAt, uint256 shippedToDistributor, uint256 shippedToRetailer, string failReason))',
@@ -80,6 +88,27 @@ const short       = a => a ? a.slice(0,6)+'…'+a.slice(-4) : ''
 const displayName = a => { const c = getCompany(a); return c || short(a) }
 const fmtDate     = ts => ts ? new Date(Number(ts)*1000).toLocaleDateString() : ''
 const fmtDateTime = ts => ts ? new Date(Number(ts)*1000).toLocaleString() : ''
+
+/* ─── OTP / Email API helpers ────────────────────────────────────── */
+const API = 'http://localhost:3001/api'
+
+async function apiPost(path, body) {
+  const r = await fetch(API + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const json = await r.json()
+  if (!r.ok) throw new Error(json.error || 'Server error')
+  return json
+}
+
+async function apiGet(path) {
+  const r = await fetch(API + path)
+  const json = await r.json()
+  if (!r.ok) throw new Error(json.error || 'Server error')
+  return json
+}
 
 /* ─── Error mapping ───────────────────────────────────────────────── */
 function errMsg(e) {
@@ -455,9 +484,10 @@ function Styles() {
         font-weight: 700;
         letter-spacing: .03em;
       }
-      .status-stock   { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-      .status-transit { background: #fef9c3; color: #a16207; border: 1px solid #fde047; }
-      .status-done    { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+      .status-stock     { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+      .status-transit   { background: #fef9c3; color: #a16207; border: 1px solid #fde047; }
+      .status-done      { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+      .status-cancelled { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 
       /* ── Account list ─────────────────────────────────────────── */
       .account-list {
@@ -796,9 +826,10 @@ function ProductSearch({ provider }) {
       const pid = BigInt(id.trim())
       const p   = await ptC.getProduct(pid)
       if (!p.id || p.id.toString() === '0') throw new Error('not found')
-      setProd({ id: pid, name: p.name, manufacturer: p.manufacturer, holder: p.currentHolder, status: ['In Stock','In Transit','Delivered'][p.status] })
+      const statuses = ['In Stock','In Transit','Delivered','Cancelled']
+      setProd({ id: pid, name: p.name, manufacturer: p.manufacturer, holder: p.currentHolder, status: statuses[p.status] || 'Unknown' })
       const history = await ptC.getTransferHistory(pid)
-      setHist(history.map(h => ({ from: h.from, to: h.to, timestamp: h.timestamp, confirmed: h.confirmed })))
+      setHist(history.map(h => ({ from: h.from, to: h.to, timestamp: h.timestamp, confirmed: h.confirmed, cancelled: h.cancelled })))
     } catch(e) { setErr(errMsg(e)) }
     setBusy(false)
   }
@@ -828,9 +859,10 @@ function ProductSearch({ provider }) {
             <div style={{marginTop:12}}>
               <div style={{fontWeight:700, fontSize:'.8rem', color:'#374151', marginBottom:8, textTransform:'uppercase', letterSpacing:'.04em'}}>Transfer History</div>
               {hist.map((h,i) => (
-                <div key={i} style={{display:'flex', gap:10, alignItems:'center', padding:'7px 0', borderBottom:'1px solid #f1f5f9', fontSize:'.82rem'}}>
-                  <span style={{minWidth:16}}>{h.confirmed ? '✅' : '⏳'}</span>
-                  <span style={{color:'#475569'}}>{displayName(h.from)} → {displayName(h.to)}</span>
+                <div key={i} style={{display:'flex', gap:10, alignItems:'center', padding:'7px 0', borderBottom:'1px solid #f1f5f9', fontSize:'.82rem', opacity: h.cancelled ? 0.55 : 1}}>
+                  <span style={{minWidth:16}}>{h.cancelled ? '🚫' : h.confirmed ? '✅' : '⏳'}</span>
+                  <span style={{color:'#475569', textDecoration: h.cancelled ? 'line-through' : 'none'}}>{displayName(h.from)} → {displayName(h.to)}</span>
+                  {h.cancelled && <span style={{color:'#dc2626', fontSize:'.72rem', fontWeight:700, marginLeft:4}}>CANCELLED</span>}
                   <span style={{marginLeft:'auto', color:'#94a3b8', fontSize:'.75rem'}}>{fmtDate(h.timestamp)}</span>
                 </div>
               ))}
@@ -847,6 +879,7 @@ function ProductSearch({ provider }) {
 /* ══════════════════════════════════════════════════════════════════ */
 function VerifyPage({ productId }) {
   const [result, setResult] = useState(null)
+  const [credStatus, setCredStatus] = useState({}) // { mf: bool, dt: bool, rt: bool }
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
 
@@ -855,8 +888,19 @@ function VerifyPage({ productId }) {
       try {
         const provider = new ethers.JsonRpcProvider('https://eth.didlab.org')
         const auditC   = new ethers.Contract(ADDR.audit, ABI.audit, provider)
+        const credC    = new ethers.Contract(ADDR.cred,  ABI.cred,  provider)
         const r        = await auditC.auditProduct(BigInt(productId))
         setResult(r)
+        // Load credential validity for each party
+        const cs = {}
+        const zero = '0x0000000000000000000000000000000000000000'
+        if (r.manufacturer && r.manufacturer !== zero)
+          try { cs.mf = await credC.isCredentialValid(r.manufacturer) } catch { cs.mf = false }
+        if (r.distributor && r.distributor !== zero)
+          try { cs.dt = await credC.isCredentialValid(r.distributor) } catch { cs.dt = false }
+        if (r.retailer && r.retailer !== zero)
+          try { cs.rt = await credC.isCredentialValid(r.retailer) } catch { cs.rt = false }
+        setCredStatus(cs)
       } catch(e) {
         setErr('Could not load product verification data. ' + errMsg(e))
       }
@@ -924,19 +968,35 @@ function VerifyPage({ productId }) {
                   </div>
                   <div style={{display:'flex', flexDirection:'column', gap:10, fontSize:'.85rem'}}>
                     {[
-                      { label:'🏭 Manufacturer', addr: result.manufacturer, time: result.manufacturedAt },
-                      { label:'🚚 Distributor',  addr: result.distributor,  time: result.shippedToDistributor },
-                      { label:'🏪 Retailer',     addr: result.retailer,     time: result.shippedToRetailer },
-                    ].map((row,i) => (
-                      <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom: i<2 ? '1px solid #d1fae5' : 'none'}}>
-                        <div>
-                          <div style={{fontWeight:700, color:'#065f46'}}>{row.label}</div>
-                          <div style={{fontFamily:'monospace', fontSize:'.73rem', color:'#94a3b8', marginTop:2}}>{row.addr}</div>
-                          {row.time > 0 && <div style={{fontSize:'.75rem', color:'#64748b', marginTop:2}}>{fmtDateTime(row.time)}</div>}
+                      { label:'🏭 Manufacturer', addr: result.manufacturer, time: result.manufacturedAt,       credKey:'mf' },
+                      { label:'🚚 Distributor',  addr: result.distributor,  time: result.shippedToDistributor, credKey:'dt' },
+                      { label:'🏪 Retailer',     addr: result.retailer,     time: result.shippedToRetailer,    credKey:'rt' },
+                    ].map((row,i) => {
+                      const isValid = credStatus[row.credKey]
+                      const hasAddr = row.addr && row.addr !== '0x0000000000000000000000000000000000000000'
+                      return (
+                        <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', padding:'8px 0', borderBottom: i<2 ? '1px solid #d1fae5' : 'none'}}>
+                          <div>
+                            <div style={{fontWeight:700, color:'#065f46'}}>{row.label}</div>
+                            <div style={{fontFamily:'monospace', fontSize:'.73rem', color:'#94a3b8', marginTop:2}}>{row.addr}</div>
+                            {row.time > 0 && <div style={{fontSize:'.75rem', color:'#64748b', marginTop:2}}>{fmtDateTime(row.time)}</div>}
+                          </div>
+                          <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
+                            <span style={{color:'#059669', fontSize:'1.2rem'}}>✓</span>
+                            {hasAddr && (
+                              <span style={{
+                                fontSize:'.72rem', fontWeight:700, padding:'2px 7px', borderRadius:12,
+                                background: isValid ? '#dcfce7' : '#fee2e2',
+                                color: isValid ? '#15803d' : '#991b1b',
+                                border: isValid ? '1px solid #bbf7d0' : '1px solid #fecaca',
+                              }}>
+                                {isValid ? '🟢 Cred Active' : '🔴 Cred Revoked'}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span style={{color:'#059669', fontSize:'1.2rem'}}>✓</span>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -1131,15 +1191,136 @@ function PasswordLoginPage({ address, onDone, onSwitchWallet }) {
 /* ══════════════════════════════════════════════════════════════════ */
 /*  Register DID                                                      */
 /* ══════════════════════════════════════════════════════════════════ */
+/* ─── Reusable EmailSettings component ───────────────────────────── */
+// roleKey: "LG" | "MF" | "DT" | "RT"
+function EmailSettings({ roleKey }) {
+  const [currentEmail, setCurrentEmail] = useState('')
+  const [newEmail,     setNewEmail]     = useState('')
+  const [otp,          setOtp]          = useState('')
+  const [step,         setStep]         = useState('idle') // idle | sent | done
+  const [busy,         setBusy]         = useState(false)
+  const [err,          setErr]          = useState('')
+  const [ok,           setOk]           = useState('')
+
+  useEffect(() => {
+    apiGet('/email/' + roleKey)
+      .then(d => setCurrentEmail(d.email || ''))
+      .catch(() => {})
+  }, [roleKey])
+
+  async function sendOtp() {
+    setErr(''); setOk(''); setBusy(true)
+    try {
+      const r = await apiPost('/email/send-otp', { email: newEmail.trim(), role: roleKey })
+      setOk(r.message); setStep('sent')
+    } catch(e) { setErr(e.message) }
+    setBusy(false)
+  }
+
+  async function verifyOtp() {
+    setErr(''); setOk(''); setBusy(true)
+    try {
+      const r = await apiPost('/email/verify-otp', { email: newEmail.trim(), role: roleKey, otp: otp.trim() })
+      setOk(r.message); setCurrentEmail(newEmail.trim()); setStep('done')
+      setNewEmail(''); setOtp('')
+    } catch(e) { setErr(e.message) }
+    setBusy(false)
+  }
+
+  return (
+    <div className="card" style={{marginTop:24}}>
+      <div className="card-header">
+        <h3 className="card-title">📧 Notification Email</h3>
+      </div>
+      <div style={{padding:'16px 20px'}}>
+        {currentEmail
+          ? <p style={{margin:'0 0 12px', fontSize:'.9rem'}}>
+              Current: <strong>{currentEmail}</strong>
+              <span style={{marginLeft:8, opacity:.6, fontSize:'.8rem'}}>— supply chain alerts go here</span>
+            </p>
+          : <p style={{margin:'0 0 12px', fontSize:'.9rem', opacity:.7}}>No email set — you won't receive notifications.</p>
+        }
+        {err && <Alert type="error" onClose={()=>setErr('')}>{err}</Alert>}
+        {ok  && <Alert type="success">{ok}</Alert>}
+
+        {step !== 'sent' && (
+          <div style={{display:'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap'}}>
+            <div className="form-group" style={{flex:1, minWidth:200, margin:0}}>
+              <label className="form-label">{currentEmail ? 'New email address' : 'Your email address'}</label>
+              <input
+                className="form-input"
+                type="email"
+                placeholder="you@example.com"
+                value={newEmail}
+                onChange={e=>{setNewEmail(e.target.value); setStep('idle'); setErr(''); setOk('')}}
+              />
+            </div>
+            <button className="btn btn-primary" onClick={sendOtp}
+              disabled={busy || !newEmail.trim().includes('@')} style={{marginBottom:0}}>
+              {busy ? <><Spin/> Sending…</> : 'Send Code'}
+            </button>
+          </div>
+        )}
+
+        {step === 'sent' && (
+          <div style={{display:'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap', marginTop:8}}>
+            <div className="form-group" style={{flex:1, minWidth:150, margin:0}}>
+              <label className="form-label">6-digit code sent to {newEmail}</label>
+              <input
+                className="form-input"
+                type="text"
+                placeholder="123456"
+                maxLength={6}
+                value={otp}
+                onChange={e=>setOtp(e.target.value)}
+              />
+            </div>
+            <button className="btn btn-primary" onClick={verifyOtp}
+              disabled={busy || otp.trim().length < 6}>
+              {busy ? <><Spin/> Verifying…</> : 'Verify & Save'}
+            </button>
+            <button className="btn btn-outline" onClick={()=>setStep('idle')}>← Back</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ─── RegisterPage with email OTP ────────────────────────────────── */
 function RegisterPage({ signer, address, provider, onDone }) {
-  const [role, setRole] = useState('Manufacturer')
-  const [busy, setBusy] = useState(false)
-  const [err,  setErr]  = useState('')
-  const [ok,   setOk]   = useState('')
+  const [role,     setRole]    = useState('Manufacturer')
+  const [email,    setEmail]   = useState('')
+  const [otp,      setOtp]     = useState('')
+  const [otpStep,  setOtpStep] = useState('idle') // idle | sent | verified
+  const [busy,     setBusy]    = useState(false)
+  const [otpBusy,  setOtpBusy] = useState(false)
+  const [err,      setErr]     = useState('')
+  const [ok,       setOk]      = useState('')
   const co = getCompany(address)
 
+  const roleKeyMap = { Manufacturer:'MF', Distributor:'DT', Retailer:'RT' }
+
+  async function sendOtp() {
+    setErr(''); setOk(''); setOtpBusy(true)
+    try {
+      const r = await apiPost('/email/send-otp', { email: email.trim(), role: roleKeyMap[role] })
+      setOk(r.message); setOtpStep('sent')
+    } catch(e) { setErr(e.message) }
+    setOtpBusy(false)
+  }
+
+  async function verifyOtp() {
+    setErr(''); setOk(''); setOtpBusy(true)
+    try {
+      const r = await apiPost('/email/verify-otp', { email: email.trim(), role: roleKeyMap[role], otp: otp.trim() })
+      setOk(r.message + ' Now registering on blockchain…'); setOtpStep('verified')
+    } catch(e) { setErr(e.message) }
+    setOtpBusy(false)
+  }
+
   async function register(e) {
-    e.preventDefault(); setErr(''); setOk(''); setBusy(true)
+    e.preventDefault(); setErr(''); setBusy(true)
     try {
       const C  = getC(signer)
       const tx = await C.did.registerDID(role)
@@ -1151,9 +1332,12 @@ function RegisterPage({ signer, address, provider, onDone }) {
     setBusy(false)
   }
 
+  const emailValid = email.trim().includes('@')
+  const canRegister = otpStep === 'verified'
+
   return (
     <div className="center-wrap">
-      <div className="login-card" style={{maxWidth:460}}>
+      <div className="login-card" style={{maxWidth:480}}>
         <span className="login-logo">📋</span>
         <h1 className="login-title">Register on Chain</h1>
         <p className="login-subtitle">
@@ -1165,17 +1349,67 @@ function RegisterPage({ signer, address, provider, onDone }) {
         </div>
         {err && <Alert type="error" onClose={()=>setErr('')}>{err}</Alert>}
         {ok  && <Alert type="success">{ok}</Alert>}
+
         <form onSubmit={register}>
+          {/* Step 1: Role */}
           <div className="form-group">
             <label className="form-label">Your Role</label>
-            <select className="form-select" value={role} onChange={e=>setRole(e.target.value)}>
+            <select className="form-select" value={role}
+              onChange={e=>{ setRole(e.target.value); setOtpStep('idle'); setOtp(''); setOk('') }}>
               <option value="Manufacturer">🏭 Manufacturer</option>
               <option value="Distributor">🚚 Distributor</option>
               <option value="Retailer">🏪 Retailer</option>
             </select>
           </div>
-          <button className="btn btn-primary btn-lg" style={{width:'100%'}} type="submit" disabled={busy}>
-            {busy ? <><Spin/> Registering…</> : 'Register on Blockchain'}
+
+          {/* Step 2: Email + OTP */}
+          <div className="form-group">
+            <label className="form-label">📧 Notification Email</label>
+            <div style={{display:'flex', gap:8}}>
+              <input
+                className="form-input"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                disabled={otpStep === 'sent' || otpStep === 'verified'}
+                onChange={e=>{ setEmail(e.target.value); setOtpStep('idle'); setOtp(''); setOk('') }}
+                style={{flex:1}}
+              />
+              {otpStep !== 'verified' && (
+                <button type="button" className="btn btn-outline" onClick={sendOtp}
+                  disabled={otpBusy || !emailValid || otpStep === 'sent'}>
+                  {otpBusy && otpStep !== 'sent' ? <Spin/> : otpStep === 'sent' ? '✉️ Sent' : 'Send Code'}
+                </button>
+              )}
+              {otpStep === 'verified' && <span style={{alignSelf:'center', color:'#16a34a', fontWeight:600}}>✅ Verified</span>}
+            </div>
+          </div>
+
+          {otpStep === 'sent' && (
+            <div className="form-group">
+              <label className="form-label">Enter 6-digit code from your email</label>
+              <div style={{display:'flex', gap:8}}>
+                <input
+                  className="form-input"
+                  type="text"
+                  placeholder="123456"
+                  maxLength={6}
+                  value={otp}
+                  onChange={e=>setOtp(e.target.value)}
+                  style={{flex:1, letterSpacing:'.2em', fontSize:'1.1rem'}}
+                />
+                <button type="button" className="btn btn-primary" onClick={verifyOtp}
+                  disabled={otpBusy || otp.trim().length < 6}>
+                  {otpBusy ? <Spin/> : 'Verify'}
+                </button>
+                <button type="button" className="btn btn-outline" onClick={()=>setOtpStep('idle')}>←</button>
+              </div>
+            </div>
+          )}
+
+          <button className="btn btn-primary btn-lg" style={{width:'100%', marginTop:8}} type="submit"
+            disabled={busy || !canRegister}>
+            {busy ? <><Spin/> Registering…</> : canRegister ? 'Register on Blockchain' : 'Verify email first ↑'}
           </button>
         </form>
       </div>
@@ -1541,6 +1775,7 @@ function LocalGovtPage({ signer, address, provider, onLogout }) {
           }
         </div>
       </div>
+      <EmailSettings roleKey="LG" />
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -1549,6 +1784,9 @@ function LocalGovtPage({ signer, address, provider, onLogout }) {
 /* ══════════════════════════════════════════════════════════════════ */
 /*  Manufacturer Dashboard                                            */
 /* ══════════════════════════════════════════════════════════════════ */
+const getHidden = (role, addr) => { try { return new Set(JSON.parse(localStorage.getItem(`sc_hidden_${role}_${addr?.toLowerCase()}`) || '[]')) } catch { return new Set() } }
+const saveHidden = (role, addr, set) => { try { localStorage.setItem(`sc_hidden_${role}_${addr?.toLowerCase()}`, JSON.stringify([...set])) } catch {} }
+
 function ManufacturerPage({ signer, address, provider, onLogout }) {
   const [products,  setProducts]  = useState([])
   const [actors,    setActors]    = useState({ Distributor:[] })
@@ -1556,6 +1794,8 @@ function ManufacturerPage({ signer, address, provider, onLogout }) {
   const [newName,   setNewName]   = useState('')
   const [shipForm,  setShipForm]  = useState({})
   const [qrProduct, setQrProduct] = useState(null)  // { id, name } for QR modal
+  const [hidden,    setHidden]    = useState(() => getHidden('MF', address))
+  const [showHidden,setShowHidden]= useState(false)
   const [busy,      setBusy]      = useState({})
   const [loading,   setLoading]   = useState(true)
   const [err,  setErr]  = useState('')
@@ -1643,13 +1883,49 @@ function ManufacturerPage({ signer, address, provider, onLogout }) {
     setBusy(b=>({...b, ['ship_'+key]:false}))
   }
 
+  async function cancelShipmentMF(pid) {
+    const key = pid.toString()
+    setErr(''); setOk(''); setBusy(b=>({...b, ['cancel_'+key]:true}))
+    try {
+      const C  = getC(signer)
+      const tx = await C.pt.cancelShipment(pid)
+      setOk('Cancelling shipment…'); await tx.wait()
+      setOk('✅ Shipment cancelled — product returned to In Stock.'); load()
+    } catch(e) { setErr(errMsg(e)) }
+    setBusy(b=>({...b, ['cancel_'+key]:false}))
+  }
+
+  async function forceRecallMF(pid) {
+    const key = pid.toString()
+    setErr(''); setOk(''); setBusy(b=>({...b, ['recall_'+key]:true}))
+    try {
+      const C  = getC(signer)
+      const tx = await C.pt.forceRecall(pid)
+      setOk('Force recalling product…'); await tx.wait()
+      setOk('✅ Product force recalled — back in your inventory.'); load()
+    } catch(e) { setErr(errMsg(e)) }
+    setBusy(b=>({...b, ['recall_'+key]:false}))
+  }
+
+  function toggleHide(pid) {
+    const key = pid.toString()
+    setHidden(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      saveHidden('MF', address, next)
+      return next
+    })
+  }
+
   const setField = (id, field, val) =>
     setShipForm(s=>({...s, [id.toString()]: {...(s[id.toString()]||{}), [field]:val}}))
 
-  const myProds   = products.filter(p => p.holder.toLowerCase()===address.toLowerCase() && Number(p.status)===0)
-  const inTransit = products.filter(p => Number(p.status)===1)
-  const atPartner = products.filter(p => p.holder.toLowerCase()!==address.toLowerCase() && Number(p.status)===0)
-  const delivered = products.filter(p => Number(p.status)===2)
+  const myProds    = products.filter(p => !hidden.has(p.id.toString()) && p.holder.toLowerCase()===address.toLowerCase() && Number(p.status)===0)
+  const inTransit  = products.filter(p => !hidden.has(p.id.toString()) && Number(p.status)===1)
+  const atPartner  = products.filter(p => !hidden.has(p.id.toString()) && p.holder.toLowerCase()!==address.toLowerCase() && Number(p.status)===0)
+  const delivered  = products.filter(p => !hidden.has(p.id.toString()) && Number(p.status)===2)
+  const cancelled  = products.filter(p => !hidden.has(p.id.toString()) && Number(p.status)===3)
+  const hiddenProds= products.filter(p =>  hidden.has(p.id.toString()))
 
   return (
     <div className="page">
@@ -1695,7 +1971,7 @@ function ManufacturerPage({ signer, address, provider, onLogout }) {
           <div style={{height:6}}/>
           {loading
             ? <div className="empty-state"><Spin size={20}/> Loading…</div>
-            : myProds.length===0 && inTransit.length===0 && atPartner.length===0 && delivered.length===0
+            : myProds.length===0 && inTransit.length===0 && atPartner.length===0 && delivered.length===0 && cancelled.length===0
               ? <div className="empty-state">No products yet — create your first one</div>
               : <>
                 {myProds.map((p,i) => {
@@ -1708,6 +1984,7 @@ function ManufacturerPage({ signer, address, provider, onLogout }) {
                           <span className="cred-type-tag" style={{marginLeft:8}}>ID #{key}</span>
                         </div>
                         <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                          <button className="btn btn-outline btn-sm" title="Archive" onClick={()=>toggleHide(p.id)}>🗂</button>
                           <button className="btn btn-outline btn-sm" onClick={()=>setQrProduct({id:p.id, name:p.name})}>🔳 QR</button>
                           <span className="status-badge status-stock">In Stock</span>
                         </div>
@@ -1730,18 +2007,33 @@ function ManufacturerPage({ signer, address, provider, onLogout }) {
                     </div>
                   )
                 })}
-                {inTransit.map((p,i) => (
-                  <div key={i} className="product-row">
-                    <div>
-                      <div className="product-name">{p.name}</div>
-                      <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>
-                        ID #{p.id.toString()} · In Transit {p.locationLabel}
+                {inTransit.map((p,i) => {
+                  const key = p.id.toString()
+                  return (
+                    <div key={i} className="product-row">
+                      <div>
+                        <div className="product-name">{p.name}</div>
+                        <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>
+                          ID #{key} · In Transit {p.locationLabel}
+                        </div>
+                      </div>
+                      <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                        <button className="btn btn-danger btn-sm"
+                          onClick={()=>cancelShipmentMF(p.id)} disabled={busy['cancel_'+key]}
+                          title="Cancel shipment if recipient's credential was revoked">
+                          {busy['cancel_'+key] ? <Spin/> : '✕ Cancel'}
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={()=>forceRecallMF(p.id)} disabled={busy['recall_'+key]}>
+                          {busy['recall_'+key] ? <Spin/> : '⬅ Force Recall'}
+                        </button>
+                        <span className="status-badge status-transit">🚚 In Transit</span>
                       </div>
                     </div>
-                    <span className="status-badge status-transit">🚚 In Transit</span>
-                  </div>
-                ))}
-                {atPartner.map((p,i) => (
+                  )
+                })}
+                {atPartner.map((p,i) => {
+                  const key = p.id.toString()
+                  return (
                   <div key={i} className="product-row">
                     <div>
                       <div className="product-name">{p.name}</div>
@@ -1749,27 +2041,68 @@ function ManufacturerPage({ signer, address, provider, onLogout }) {
                         ID #{p.id.toString()} · {p.locationLabel || 'at partner'}
                       </div>
                     </div>
-                    <span className="status-badge" style={{background:'rgba(59,130,246,.15)', color:'#93c5fd', border:'1px solid rgba(59,130,246,.3)'}}>
-                      📦 At {p.locationLabel?.replace('at ','')||'Partner'}
-                    </span>
+                    <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                      <button className="btn btn-danger btn-sm" onClick={()=>forceRecallMF(p.id)} disabled={busy['recall_'+key]}>
+                        {busy['recall_'+key] ? <Spin/> : '⬅ Force Recall'}
+                      </button>
+                      <span className="status-badge" style={{background:'rgba(59,130,246,.15)', color:'#93c5fd', border:'1px solid rgba(59,130,246,.3)'}}>
+                        📦 At {p.locationLabel?.replace('at ','')||'Partner'}
+                      </span>
+                    </div>
                   </div>
-                ))}
-                {delivered.map((p,i) => (
+                )})}
+                {delivered.map((p,i) => {
+                  const key = p.id.toString()
+                  return (
                   <div key={i} className="product-row">
                     <div>
                       <div className="product-name">{p.name}</div>
                       <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>ID #{p.id.toString()} · chain complete</div>
                     </div>
                     <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                      <button className="btn btn-danger btn-sm" onClick={()=>forceRecallMF(p.id)} disabled={busy['recall_'+key]}>
+                        {busy['recall_'+key] ? <Spin/> : '⬅ Force Recall'}
+                      </button>
+                      <button className="btn btn-outline btn-sm" title="Archive" onClick={()=>toggleHide(p.id)}>🗂</button>
                       <button className="btn btn-outline btn-sm" onClick={()=>setQrProduct({id:p.id, name:p.name})}>🔳 QR</button>
                       <span className="status-badge status-done">✅ Delivered</span>
                     </div>
                   </div>
+                )})}
+
+                {cancelled.map((p,i) => (
+                  <div key={i} className="product-row" style={{opacity:.7}}>
+                    <div>
+                      <div className="product-name">{p.name}</div>
+                      <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>ID #{p.id.toString()}</div>
+                    </div>
+                    <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                      <button className="btn btn-outline btn-sm" title="Archive" onClick={()=>toggleHide(p.id)}>🗂</button>
+                      <span className="status-badge status-cancelled">🚫 Cancelled</span>
+                    </div>
+                  </div>
                 ))}
+                {hiddenProds.length > 0 && (
+                  <div style={{marginTop:12, borderTop:'1px solid #f1f5f9', paddingTop:10}}>
+                    <button className="btn btn-outline btn-sm" onClick={()=>setShowHidden(v=>!v)}>
+                      {showHidden ? '▲ Hide archived' : `▼ Show archived (${hiddenProds.length})`}
+                    </button>
+                    {showHidden && hiddenProds.map((p,i) => (
+                      <div key={i} className="product-row" style={{opacity:.5}}>
+                        <div>
+                          <div className="product-name">{p.name}</div>
+                          <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>ID #{p.id.toString()}</div>
+                        </div>
+                        <button className="btn btn-outline btn-sm" onClick={()=>toggleHide(p.id)}>↩ Restore</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
           }
         </div>
       </div>
+      <EmailSettings roleKey="MF" />
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -1779,43 +2112,53 @@ function ManufacturerPage({ signer, address, provider, onLogout }) {
 /*  Distributor Dashboard                                             */
 /* ══════════════════════════════════════════════════════════════════ */
 function DistributorPage({ signer, address, provider, onLogout }) {
-  const [pending,   setPending]  = useState([])
-  const [inventory, setInv]      = useState([])
-  const [actors,    setActors]   = useState({ Retailer:[] })
-  const [hasCred,   setHasCred]  = useState(null)
-  const [shipForm,  setShipForm] = useState({})
-  const [busy,      setBusy]     = useState({})
-  const [loading,   setLoading]  = useState(true)
+  const [pending,    setPending]  = useState([])
+  const [inventory,  setInv]      = useState([])
+  const [actors,     setActors]   = useState({ Retailer:[] })
+  const [hasCred,    setHasCred]  = useState(null)
+  const [shipForm,   setShipForm] = useState({})
+  const [hidden,     setHidden]   = useState(() => getHidden('DT', address))
+  const [showHidden, setShowHidden]= useState(false)
+  const [busy,       setBusy]     = useState({})
+  const [loading,    setLoading]  = useState(true)
   const [err,  setErr]  = useState('')
   const [ok,   setOk]   = useState('')
 
   async function load() {
-    console.log("MF load() start")
     setLoading(true)
     try {
       const ptC    = new ethers.Contract(ADDR.pt, ABI.pt, provider)
       const latest = await provider.getBlockNumber()
       const from   = Math.max(0, latest - 2000)
 
-      // Find products shipped TO me
-      const shippedLogs  = await chunkedLogs(ptC, ptC.filters.ProductShipped(null, null, address), from, latest)
-      const receivedLogs = await chunkedLogs(ptC, ptC.filters.ProductReceived(null, address), from, latest)
-      const receivedIds  = new Set(receivedLogs.map(l => l.args.id.toString()))
+      // Inventory: use getHolderProducts — reliable, no block-window limit
+      const holderIds = await ptC.getHolderProducts(address)
+      const inv = []
+      for (const id of [...holderIds].reverse()) {
+        try {
+          const p = await ptC.getProduct(id)
+          if (p.id.toString() === '0') continue
+          if (p.currentHolder.toLowerCase() === address.toLowerCase())
+            inv.push({ id, name: p.name, status: p.status })
+        } catch(e) { console.error('getProduct error:', e.message) }
+      }
+      setInv(inv)
 
-      const pend = [], inv = [], seen = new Set()
+      // Incoming: use events (pending shipments not yet confirmed)
+      const shippedLogs = await chunkedLogs(ptC, ptC.filters.ProductShipped(null, null, address), from, latest)
+      const pend = [], seen = new Set()
       for (const log of [...shippedLogs].reverse()) {
         const id = log.args.id.toString()
         if (seen.has(id)) continue; seen.add(id)
         try {
           const p = await ptC.getProduct(log.args.id)
           if (p.id.toString() === '0') continue
-          if (p.currentHolder.toLowerCase() === address.toLowerCase())
-            inv.push({ id: log.args.id, name: p.name, status: p.status })
-          else if (!receivedIds.has(id) && p.pendingRecipient.toLowerCase() === address.toLowerCase())
+          if (p.pendingRecipient.toLowerCase() === address.toLowerCase())
             pend.push({ id: log.args.id, name: p.name, from: log.args.from })
-        } catch(e) { console.error("getCredential error:", e.message) }
+        } catch(e) { console.error('getProduct error:', e.message) }
       }
-      setPending(pend); setInv(inv)
+      setPending(pend)
+
       const a = await loadActors(provider)
       setActors(a)
       const cred = await hasValidCred(address, provider)
@@ -1850,6 +2193,40 @@ function DistributorPage({ signer, address, provider, onLogout }) {
       setOk(`🚚 Shipped to ${displayName(form.recipAddr)}!`); load()
     } catch(e) { setErr(e.message?.includes('select') ? e.message : errMsg(e)) }
     setBusy(b=>({...b, ['ship_'+key]:false}))
+  }
+
+  async function cancelShipmentDT(pid) {
+    const key = pid.toString()
+    setErr(''); setOk(''); setBusy(b=>({...b, ['cancel_'+key]:true}))
+    try {
+      const C  = getC(signer)
+      const tx = await C.pt.cancelShipment(pid)
+      setOk('Cancelling shipment…'); await tx.wait()
+      setOk('✅ Shipment cancelled — product returned to In Stock.'); load()
+    } catch(e) { setErr(errMsg(e)) }
+    setBusy(b=>({...b, ['cancel_'+key]:false}))
+  }
+
+  async function forceRecallDT(pid) {
+    const key = pid.toString()
+    setErr(''); setOk(''); setBusy(b=>({...b, ['recall_'+key]:true}))
+    try {
+      const C  = getC(signer)
+      const tx = await C.pt.forceRecall(pid)
+      setOk('Force recalling product from retailer…'); await tx.wait()
+      setOk('✅ Product force recalled — back in your inventory.'); load()
+    } catch(e) { setErr(errMsg(e)) }
+    setBusy(b=>({...b, ['recall_'+key]:false}))
+  }
+
+  function toggleHideDT(pid) {
+    const key = pid.toString()
+    setHidden(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      saveHidden('DT', address, next)
+      return next
+    })
   }
 
   const setField = (id, field, val) =>
@@ -1897,41 +2274,79 @@ function DistributorPage({ signer, address, provider, onLogout }) {
         <div style={{height:6}}/>
         {loading
           ? <div className="empty-state"><Spin size={20}/> Loading…</div>
-          : inventory.length===0
+          : inventory.filter(p=>!hidden.has(p.id.toString())).length===0
             ? <div className="empty-state">No products in inventory yet</div>
-            : inventory.map((p,i) => {
-              const key = p.id.toString()
-              return (
-                <div key={i} className="inventory-item verified">
-                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10}}>
-                    <div>
-                      <strong style={{fontSize:'.95rem'}}>{p.name}</strong>
-                      <span className="cred-type-tag" style={{marginLeft:8}}>ID #{key}</span>
-                    </div>                    
-                    {Number(p.status)===0
-                    ? <span className="status-badge status-stock">In Stock</span>
-                    : <span className="status-badge status-transit">In Transit</span>}
-                  </div>
-                  {Number(p.status)===0 && <div className="ship-panel">
-                    <div className="ship-panel-title">🚚 Ship to Retailer</div>
-                    <div className="ship-row">
-                      <select className="form-select form-select-sm" style={{flex:1, minWidth:140}}
-                        value={shipForm[key]?.recipAddr||''}
-                        onChange={e=>setField(p.id,'recipAddr',e.target.value)}>
-                        <option value="">Select retailer…</option>
-                        {actors.Retailer.map((r,j) => <option key={j} value={r.address}>{r.company}</option>)}
-                      </select>
-                      <button className="btn btn-success btn-sm"
-                        onClick={()=>shipProduct(p.id)} disabled={busy['ship_'+key]}>
-                        {busy['ship_'+key] ? <Spin/> : 'Ship →'}
-                      </button>
+            : <>
+              {inventory.filter(p=>!hidden.has(p.id.toString())).map((p,i) => {
+                const key = p.id.toString()
+                const statusNum = Number(p.status)
+                return (
+                  <div key={i} className="inventory-item verified" style={statusNum===3?{opacity:.7}:{}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: statusNum===0 ? 10 : 0}}>
+                      <div>
+                        <strong style={{fontSize:'.95rem'}}>{p.name}</strong>
+                        <span className="cred-type-tag" style={{marginLeft:8}}>ID #{key}</span>
+                      </div>
+                      <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                        {statusNum===1 && (
+                          <button className="btn btn-danger btn-sm"
+                            onClick={()=>cancelShipmentDT(p.id)} disabled={busy['cancel_'+key]}
+                            title="Cancel shipment if recipient's credential was revoked">
+                            {busy['cancel_'+key] ? <Spin/> : '✕ Cancel'}
+                          </button>
+                        )}
+                        {statusNum===2 && (
+                          <button className="btn btn-danger btn-sm"
+                            onClick={()=>forceRecallDT(p.id)} disabled={busy['recall_'+key]}
+                            title="Force recall from retailer if their credential is revoked">
+                            {busy['recall_'+key] ? <Spin/> : '⬅ Force Recall'}
+                          </button>
+                        )}
+                        <button className="btn btn-outline btn-sm" title="Archive" onClick={()=>toggleHideDT(p.id)}>🗂</button>
+                        {statusNum===0 && <span className="status-badge status-stock">In Stock</span>}
+                        {statusNum===1 && <span className="status-badge status-transit">In Transit</span>}
+                        {statusNum===2 && <span className="status-badge status-done">✅ Delivered</span>}
+                        {statusNum===3 && <span className="status-badge status-cancelled">🚫 Cancelled</span>}
+                      </div>
                     </div>
-                  </div>}
+                    {statusNum===0 && <div className="ship-panel">
+                      <div className="ship-panel-title">🚚 Ship to Retailer</div>
+                      <div className="ship-row">
+                        <select className="form-select form-select-sm" style={{flex:1, minWidth:140}}
+                          value={shipForm[key]?.recipAddr||''}
+                          onChange={e=>setField(p.id,'recipAddr',e.target.value)}>
+                          <option value="">Select retailer…</option>
+                          {actors.Retailer.map((r,j) => <option key={j} value={r.address}>{r.company}</option>)}
+                        </select>
+                        <button className="btn btn-success btn-sm"
+                          onClick={()=>shipProduct(p.id)} disabled={busy['ship_'+key]}>
+                          {busy['ship_'+key] ? <Spin/> : 'Ship →'}
+                        </button>
+                      </div>
+                    </div>}
+                  </div>
+                )
+              })}
+              {inventory.filter(p=>hidden.has(p.id.toString())).length > 0 && (
+                <div style={{marginTop:12, borderTop:'1px solid #f1f5f9', paddingTop:10}}>
+                  <button className="btn btn-outline btn-sm" onClick={()=>setShowHidden(v=>!v)}>
+                    {showHidden ? '▲ Hide archived' : `▼ Show archived (${inventory.filter(p=>hidden.has(p.id.toString())).length})`}
+                  </button>
+                  {showHidden && inventory.filter(p=>hidden.has(p.id.toString())).map((p,i) => (
+                    <div key={i} className="product-row" style={{opacity:.5}}>
+                      <div>
+                        <div className="product-name">{p.name}</div>
+                        <div style={{fontSize:'.75rem', color:'#94a3b8', marginTop:2}}>ID #{p.id.toString()}</div>
+                      </div>
+                      <button className="btn btn-outline btn-sm" onClick={()=>toggleHideDT(p.id)}>↩ Restore</button>
+                    </div>
+                  ))}
                 </div>
-              )
-            })
+              )}
+            </>
         }
       </div>
+      <EmailSettings roleKey="DT" />
       <ProductSearch provider={provider}/>
     </div>
   )
@@ -1952,31 +2367,39 @@ function RetailerPage({ signer, address, provider, onLogout }) {
   const [qrProduct, setQrProduct] = useState(null)
 
   async function load() {
-    console.log("MF load() start")
     setLoading(true)
     try {
       const ptC    = new ethers.Contract(ADDR.pt, ABI.pt, provider)
       const latest = await provider.getBlockNumber()
       const from   = Math.max(0, latest - 2000)
 
-      const shippedLogs  = await chunkedLogs(ptC, ptC.filters.ProductShipped(null, null, address), from, latest)
-      const receivedLogs = await chunkedLogs(ptC, ptC.filters.ProductReceived(null, address), from, latest)
-      const receivedIds  = new Set(receivedLogs.map(l => l.args.id.toString()))
+      // Inventory: use getHolderProducts — reliable, no block-window limit
+      const holderIds = await ptC.getHolderProducts(address)
+      const inv = []
+      for (const id of [...holderIds].reverse()) {
+        try {
+          const p = await ptC.getProduct(id)
+          if (p.id.toString() === '0') continue
+          if (p.currentHolder.toLowerCase() === address.toLowerCase())
+            inv.push({ id, name: p.name })
+        } catch(e) { console.error('getProduct error:', e.message) }
+      }
+      setInv(inv)
 
-      const pend = [], inv = [], seen = new Set()
+      // Incoming: use events (pending shipments not yet confirmed)
+      const shippedLogs = await chunkedLogs(ptC, ptC.filters.ProductShipped(null, null, address), from, latest)
+      const pend = [], seen = new Set()
       for (const log of [...shippedLogs].reverse()) {
         const id = log.args.id.toString()
         if (seen.has(id)) continue; seen.add(id)
         try {
           const p = await ptC.getProduct(log.args.id)
           if (p.id.toString() === '0') continue
-          if (p.currentHolder.toLowerCase() === address.toLowerCase())
-            inv.push({ id: log.args.id, name: p.name })
-          else if (!receivedIds.has(id) && p.pendingRecipient.toLowerCase() === address.toLowerCase())
+          if (p.pendingRecipient.toLowerCase() === address.toLowerCase())
             pend.push({ id: log.args.id, name: p.name, from: log.args.from })
-        } catch(e) { console.error("getCredential error:", e.message) }
+        } catch(e) { console.error('getProduct error:', e.message) }
       }
-      setPending(pend); setInv(inv)
+      setPending(pend)
       const cred = await hasValidCred(address, provider)
       setHasCred(cred)
     } catch(e) { console.error('Retailer load error:', e) }
@@ -2096,6 +2519,7 @@ function RetailerPage({ signer, address, provider, onLogout }) {
             })
         }
       </div>
+      <EmailSettings roleKey="RT" />
       <ProductSearch provider={provider}/>
     </div>
   )

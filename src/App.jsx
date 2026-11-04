@@ -90,7 +90,7 @@ const fmtDate     = ts => ts ? new Date(Number(ts)*1000).toLocaleDateString() : 
 const fmtDateTime = ts => ts ? new Date(Number(ts)*1000).toLocaleString() : ''
 
 /* ─── OTP / Email API helpers ────────────────────────────────────── */
-const API = 'http://localhost:3001/api'
+const API = '/api'
 
 async function apiPost(path, body) {
   const r = await fetch(API + path, {

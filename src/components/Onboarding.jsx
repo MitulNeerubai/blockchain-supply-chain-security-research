@@ -11,9 +11,10 @@ const markSeen = k => { try { localStorage.setItem(k, '1') } catch { /* storage 
 export function useWelcome(address, role) {
   const k = key(address, role)
   const [show, setShow] = useState(() => !!address && !!role && !seen(k))
-  const open = useCallback(() => setShow(true), [])
-  const close = useCallback(() => { markSeen(k); setShow(false) }, [k])
-  return { show, open, close }
+  const [manual, setManual] = useState(false)
+  const open = useCallback(() => { setManual(true); setShow(true) }, [])
+  const close = useCallback(() => { markSeen(k); setShow(false); setManual(false) }, [k])
+  return { show, manual, open, close }
 }
 
 function StepBody({ s }) {
@@ -45,7 +46,7 @@ export function WelcomeModal({ role, company, facts, onClose, onGo }) {
             </li>
           ))}
         </ol>
-        <p className="faint small">This checklist stays in the left sidebar of your dashboard and ticks itself off as you go. The full guide is under “How it works” at the top.</p>
+        <p className="faint small">This checklist stays in the “Getting started” bar at the top of your dashboard and ticks itself off as you go. The full guide is under “How it works” at the top.</p>
         <div className="row" style={{ justifyContent: 'flex-end' }}>
           <a className="btn btn-ghost" href="#/guide" onClick={onClose}>Open full guide</a>
           {pr.next >= 0 && pr.steps[pr.next].tab
@@ -94,6 +95,57 @@ export function GettingStarted({ role, facts, onGo, onShowWelcome }) {
           )
         })}
       </ol>
+    </section>
+  )
+}
+
+/** Full-width progress bar at the top of every dashboard (replaces the old sidebar). */
+export function GettingStartedBar({ role, facts, onGo, onShowWelcome, address, extra }) {
+  const pr = progress(role, facts)
+  const k = `sc_gsbar_${(address || '').toLowerCase()}`
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(k) === 'open' } catch { return false } })
+  const toggle = () => setOpen(v => { try { localStorage.setItem(k, v ? 'closed' : 'open') } catch { /* blocked */ } return !v })
+  if (!pr.steps.length) return null
+  const allDone = pr.done === pr.total
+  const pct = Math.round((pr.done / Math.max(1, pr.total)) * 100)
+  const next = pr.next >= 0 ? pr.steps[pr.next] : null
+  return (
+    <section className={`card gs-bar${allDone ? ' done' : ''}`}>
+      <div className="gs-main">
+        <div className="gs-progress">
+          <div className="strong small">{allDone ? '🎉 All set' : 'Getting started'}</div>
+          <div className="progress"><span style={{ width: pct + '%' }} /></div>
+          <div className="faint tiny">{pr.done} of {pr.total} steps</div>
+        </div>
+        <div className="gs-next grow">
+          {next ? <>
+            <div className="small"><span className="badge pill-blue">Next</span> <b>{next.title}</b></div>
+            <div className="faint small">{next.do}</div>
+          </> : <div className="small muted">Every setup step is done. Expand to see what each step did on-chain and your place in the trust chain.</div>}
+        </div>
+        <div className="row" style={{ gap: 6 }}>
+          {next?.tab && onGo && <Button size="sm" onClick={() => onGo(next.tab)}>Go →</Button>}
+          <Button variant="ghost" size="sm" onClick={toggle}>{open ? 'Hide steps ▴' : 'All steps ▾'}</Button>
+          {onShowWelcome && <button className="icon-btn gs-help" title="Show the welcome guide" onClick={onShowWelcome}>?</button>}
+        </div>
+      </div>
+      {open && (
+        <div className="gs-detail">
+          <ol className="gs-steps">
+            {pr.steps.map((s, i) => (
+              <li key={s.id} className={`onb-item${s.isDone ? ' done' : ''}${i === pr.next ? ' next' : ''}`}>
+                <span className="onb-num">{s.isDone ? '✓' : i + 1}</span>
+                <div className="grow">
+                  <div className="onb-title">{s.title}{s.optional && <span className="faint small"> · optional</span>}</div>
+                  <StepBody s={s} />
+                  {s.tab && !s.isDone && onGo && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => onGo(s.tab)}>Go →</Button>}
+                </div>
+              </li>
+            ))}
+          </ol>
+          {extra}
+        </div>
+      )}
     </section>
   )
 }

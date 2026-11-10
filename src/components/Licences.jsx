@@ -151,14 +151,14 @@ export function LicencePanel({ standing, onChange }) {
   const activeCount = rows.filter(r => r.status === 'active').length
 
   return (
-    <div className="grid grid-aside">
+    <div className="stack">
       <Card title={`License a ${targetLabel}`} subtitle={`Issue a ${cfg.label}. Lists registered ${targetLabel}s that do not hold an active licence from you yet${s.role === 'LocalGovt' ? '' : ' (they may also work for others)'}.`}>
         {!canIssue && !standing.loading && (
           <div style={{ marginBottom: 14 }}>
             <Alert type="warning">You can issue licences once your own {s.role === 'LocalGovt' ? 'LG licence' : 'licence'} is active.</Alert>
           </div>
         )}
-        <form className="form" onSubmit={issue}>
+        <form className="form-inline" onSubmit={issue}>
           <Field
             label={targetLabel}
             hint={candidates.loading ? 'Loading companies…' : available.length ? `${available.length} ${targetLabel.toLowerCase()}${available.length === 1 ? '' : 's'} available` : undefined}
@@ -168,24 +168,22 @@ export function LicencePanel({ standing, onChange }) {
               {available.map(c => <option key={c.address} value={c.address}>{c.company} — {short(c.address)}{c.others.length ? ` (also works with ${c.others.length} other${c.others.length === 1 ? '' : 's'})` : ''}</option>)}
             </select>
           </Field>
-          {holder && <div className="copy-box">{holder}</div>}
           <Field label="Valid for (days)" hint={`Expires ${fmtDate(nowSec() + Number(days || 0) * DAY)}`}>
             <input className="input" type="number" min="1" max="3650" value={days} onChange={e => setDays(e.target.value)} disabled={!canIssue} />
           </Field>
-          <Button type="submit" block loading={busy === 'issue'} disabled={!canIssue || !holder || !(Number(days) >= 1)}>
-            🪪 Issue {cfg.label}
-          </Button>
+          <div className="form-inline-btn">
+            <Button type="submit" block loading={busy === 'issue'} disabled={!canIssue || !holder || !(Number(days) >= 1)}>
+              🪪 Issue {cfg.label}
+            </Button>
+          </div>
         </form>
 
         {(candidates.data || []).some(c => c.others.length > 0) && (
-          <div style={{ marginTop: 18 }}>
+          <div style={{ marginTop: 16 }}>
             <div className="field-label" style={{ marginBottom: 8 }}>Also licensed by others</div>
-            <div className="stack" style={{ gap: 8 }}>
+            <div className="row" style={{ gap: 18 }}>
               {candidates.data.filter(c => c.others.length > 0).map(c => (
-                <div key={c.address} className="row-between small">
-                  <Entity address={c.address} name={c.company} role={c.role} size={28} />
-                  <span className="faint">by {c.others.map(o => d.name(o.issuer)).join(', ')}</span>
-                </div>
+                <Entity key={c.address} address={c.address} name={c.company} role={c.role} size={28} sub={`also with ${c.others.map(o => d.name(o.issuer)).join(', ')}`} />
               ))}
             </div>
           </div>

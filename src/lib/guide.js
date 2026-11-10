@@ -1,5 +1,5 @@
 // Step-by-step guidance per role. Used by the welcome pop-up, the dashboard
-// "Getting started" sidebar, the Register page and the public How-it-works page.
+// "Getting started" bar, the Register page and the public How-it-works page.
 //
 // Each step: title, do (what you click), happens (what the blockchain does),
 // tab (dashboard tab that the "Go" button opens), done(facts) → bool.

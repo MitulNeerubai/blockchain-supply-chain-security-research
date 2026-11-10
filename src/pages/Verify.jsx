@@ -40,7 +40,7 @@ export default function Verify({ productId }) {
   }
 
   return (
-    <div className="page" style={{ maxWidth: 820 }}>
+    <div className="page">
       <Card>
         <form className="row" onSubmit={e => { e.preventDefault(); go('/product/' + id.trim()) }}>
           <div className="grow"><b>Verify a product</b><div className="muted small">Check its chain of custody on {CHAIN_NAME}. No wallet needed.</div></div>

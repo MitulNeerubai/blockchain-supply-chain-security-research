@@ -72,7 +72,7 @@ export default function Home() {
         </div>
       </Card>
 
-      <div className="grid grid-home" style={{ marginTop: 16 }}>
+      <div className="stack" style={{ marginTop: 16 }}>
         <Card title="Latest products" bodyClass="tight" actions={<Button variant="ghost" size="sm" onClick={() => go('/products')}>View all →</Button>}>
           {products.loading ? <Loading /> : products.error ? <div className="card-body"><Alert type="error">{products.error}</Alert></div>
             : !list.length ? <Empty icon="📦" title="No products yet">They appear here as soon as a licensed manufacturer creates one.</Empty>

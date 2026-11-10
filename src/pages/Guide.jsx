@@ -27,7 +27,7 @@ export default function Guide() {
   const [role, setRole] = useState('Manufacturer')
   const g = ROLE_GUIDE[role]
   return (
-    <div className="page" style={{ maxWidth: 980 }}>
+    <div className="page">
       <div className="page-head">
         <div>
           <h1 className="page-title">How it works</h1>
@@ -72,7 +72,7 @@ export default function Guide() {
               </div>
             </li>
             <li><b>Register your company</b>: choose a role, a unique company name and (optionally) a notification email. This creates your DID on-chain.</li>
-            <li><b>Follow the checklist</b>: right after registering, a pop-up explains your next steps. The same list stays in the left sidebar of your dashboard and ticks itself off as you go.</li>
+            <li><b>Follow the checklist</b>: right after registering, a pop-up explains your next steps. The same list stays in the “Getting started” bar at the top of your dashboard and ticks itself off as you go.</li>
           </ol>
         </Card>
 

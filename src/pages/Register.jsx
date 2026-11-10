@@ -102,7 +102,7 @@ export default function Register({ address, signer, onRegistered }) {
           <Button size="lg" block loading={busy} disabled={!ready} onClick={register}>
             {ready ? `Register as ${ROLE_LABEL[role]}` : 'Complete the steps above'}
           </Button>
-          {role && <p className="faint small center">After registering, a welcome guide opens on your dashboard and a checklist in the sidebar shows your next step.</p>}
+          {role && <p className="faint small center">After registering, a welcome guide opens on your dashboard and the “Getting started” bar at the top shows your next step.</p>}
         </div>
       </div>
     </div>

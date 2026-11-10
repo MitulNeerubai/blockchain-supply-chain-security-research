@@ -175,7 +175,7 @@ export function ProductLookup() {
       </Card>
 
       {p && (
-        <div className="grid grid-2">
+        <div className="stack">
           <Card title={p.name} subtitle={`Product #${p.id}`} actions={<><StatusPill status={p.status} /><Button variant="secondary" size="sm" onClick={() => setQr(true)}>QR</Button></>}>
             <div className="stack">
               <div className="kv">

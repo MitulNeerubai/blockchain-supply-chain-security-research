@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { loadIdentity } from './lib/chain'
 import { DirectoryProvider, NetworkProvider, ProfileProvider, SessionProvider, WalletProvider, useDirectory, useNetwork, useRoute, useWallet } from './lib/app'
 import { Alert, Button, Loading, ToastProvider } from './components/ui'
 import { TopBar } from './components/Layout'
@@ -38,7 +40,7 @@ export default function App() {
 function Router() {
   const r = useRoute()
   switch (r.page) {
-    case 'app': return <Dashboard />
+    case 'app': return import.meta.env.DEV && /^0x[0-9a-fA-F]{40}$/.test(r.arg) ? <DevPreview address={r.arg} /> : <Dashboard />
     case 'products': return <AllProducts />
     case 'product':
     case 'verify': return <Verify productId={r.arg} />
@@ -78,4 +80,13 @@ function Dashboard() {
       {body}
     </SessionProvider>
   )
+}
+
+/** DEV ONLY (stripped from production builds): view any company's dashboard read-only, no MetaMask. */
+function DevPreview({ address }) {
+  const [s, setS] = useState(null)
+  useEffect(() => { loadIdentity(address).then(id => setS({ address, signer: undefined, ...id })) }, [address])
+  if (!s) return <div className="auth-wrap"><Loading>Loading preview…</Loading></div>
+  const Page = DASHBOARD[s.role]
+  return <SessionProvider session={s}>{Page ? <Page /> : <div className="page"><Alert type="warning">No role for this address.</Alert></div>}</SessionProvider>
 }

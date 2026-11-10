@@ -67,13 +67,3 @@ export function PageHead({ session, title, subtitle, actions }) {
     </div>
   )
 }
-
-/** Dashboard frame: sticky sidebar (onboarding + trust path) next to the main content. */
-export function DashLayout({ side, children }) {
-  return (
-    <div className="page dash">
-      <aside className="dash-side">{side}</aside>
-      <div className="dash-main">{children}</div>
-    </div>
-  )
-}

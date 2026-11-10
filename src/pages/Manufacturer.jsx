@@ -27,6 +27,7 @@ export default function Manufacturer() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [touched, setTouched] = useState({})
   const [submitted, setSubmitted] = useState(false)
+  const [showForm, setShowForm] = useState(true)
 
   const products = useLoad(async () => loadProducts(await reader().pt.getManufacturerProducts(s.address)), [s.address])
   const list = products.data || []
@@ -113,28 +114,35 @@ export default function Manufacturer() {
       {tab === 'products' && (
         <div className="stack">
           <CallBackBanner items={watch} info={rc.data} onDone={reloadAll} />
-          <div className="grid grid-aside">
-            <Card title="Create a product" subtitle="Mints a product token in your name. All fields are required.">
+          <div className="stack">
+            <Card title="Create a product" subtitle="Mints a product token in your name. All fields are required."
+              actions={<Button variant="ghost" size="sm" onClick={() => setShowForm(v => !v)}>{showForm ? 'Hide form ▴' : '+ New product ▾'}</Button>}>
+              {!showForm ? <p className="faint small">Click “+ New product” to open the form.</p> : <>
               {!canCreate && !standing.loading && <div style={{ marginBottom: 14 }}><Alert type="warning">You need an active Manufacturing License to create products.</Alert></div>}
               <form className="form" onSubmit={create} noValidate>
-                <Field label="Product name *" error={showErr('name')} hint={`${form.name.trim().length}/${PRODUCT_LIMITS.name}`}>
-                  <input className={`input${showErr('name') ? ' invalid' : ''}`} placeholder="e.g. Widget Model X" value={form.name} onChange={set('name')} onBlur={blur('name')} disabled={!canCreate} maxLength={PRODUCT_LIMITS.name} />
-                </Field>
-                <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid">
+                  <Field label="Product name *" error={showErr('name')} hint={`${form.name.trim().length}/${PRODUCT_LIMITS.name}`}>
+                    <input className={`input${showErr('name') ? ' invalid' : ''}`} placeholder="e.g. Widget Model X" value={form.name} onChange={set('name')} onBlur={blur('name')} disabled={!canCreate} maxLength={PRODUCT_LIMITS.name} />
+                  </Field>
                   <Field label="Quantity *" error={showErr('quantity')}>
                     <input className={`input${showErr('quantity') ? ' invalid' : ''}`} type="number" min="1" step="1" value={form.quantity} onChange={set('quantity')} onBlur={blur('quantity')} disabled={!canCreate} />
                   </Field>
                   <Field label="Batch number *" error={showErr('batch')}>
                     <input className={`input${showErr('batch') ? ' invalid' : ''}`} placeholder="BATCH-001" value={form.batch} onChange={set('batch')} onBlur={blur('batch')} disabled={!canCreate} maxLength={PRODUCT_LIMITS.batch} />
                   </Field>
+                  <div className="span-all">
+                    <Field label="Description *" error={showErr('description')} hint={`${form.description.trim().length}/${PRODUCT_LIMITS.description}`}>
+                      <textarea className={`input${showErr('description') ? ' invalid' : ''}`} rows={2} placeholder="e.g. Electronics, 12V, 500 g" value={form.description} onChange={set('description')} onBlur={blur('description')} disabled={!canCreate} maxLength={PRODUCT_LIMITS.description} />
+                    </Field>
+                  </div>
                 </div>
-                <Field label="Description *" error={showErr('description')} hint={`${form.description.trim().length}/${PRODUCT_LIMITS.description}`}>
-                  <textarea className={`input${showErr('description') ? ' invalid' : ''}`} rows={2} placeholder="e.g. Electronics, 12V, 500 g" value={form.description} onChange={set('description')} onBlur={blur('description')} disabled={!canCreate} maxLength={PRODUCT_LIMITS.description} />
-                </Field>
                 {submitted && Object.keys(errors).length > 0 && <Alert type="error">Fill in all required fields before creating the product.</Alert>}
-                <Button type="submit" block loading={busy === 'create'} disabled={!canCreate}>📦 Create product</Button>
-                <p className="faint small">Created one by mistake? You can delete it while it is still in your stock and has never been received by a distributor.</p>
+                <div className="row-between">
+                  <p className="faint small">Created one by mistake? You can delete it while it is still in your stock and has never been received by a distributor.</p>
+                  <Button type="submit" loading={busy === 'create'} disabled={!canCreate}>📦 Create product</Button>
+                </div>
               </form>
+              </>}
             </Card>
 
             <Card title="Your products" bodyClass="" actions={<Button variant="ghost" size="sm" onClick={() => { reloadAll(); partners.reload() }}>↻ Refresh</Button>}>

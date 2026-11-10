@@ -1,101 +1,123 @@
-import { useState } from "react";
-import { ethers } from "ethers";
-import { getContract } from "../contracts";
+import { useState } from 'react'
+import { loadProducts, reader } from '../lib/chain'
+import { useLoad, useSession, useTx, useDirectory } from '../lib/app'
+import { sameAddr } from '../lib/format'
+import { Alert, Button, Card, Empty, Field, Loading, Stat, Tabs } from '../components/ui'
+import { PageHead } from '../components/Layout'
+import { LicenceBanner, LicencePanel, useActiveLicensees, useStanding } from '../components/Licences'
+import { ProductLookup } from '../components/Products'
+import { EmailSettings } from '../components/EmailSettings'
+import { FilterChips, ProductItem, ShipForm, useProductModals } from '../components/ProductList'
 
-export default function Manufacturer({ signer }) {
-  const [productName, setProductName] = useState("");
-  const [mfCredId, setMfCredId] = useState("");
-  const [recipient, setRecipient] = useState("");
-  const [secret, setSecret] = useState("");
-  const [transferCredId, setTransferCredId] = useState("");
-  const [productId, setProductId] = useState("");
-  const [status, setStatus] = useState("");
+const EMPTY_FORM = { name: '', quantity: '1', description: '', batch: '' }
 
-  async function createProduct() {
-    if (!signer) return setStatus("❌ Connect wallet first");
-    if (!productName || !mfCredId) return setStatus("❌ Fill in product name and credential ID");
-    try {
-      setStatus("⏳ Creating product on blockchain...");
-      const pt = getContract("ProductTransfer", signer);
-      const tx = await pt.createProduct(productName, mfCredId);
-      setStatus("⏳ Waiting for confirmation...");
-      const receipt = await tx.wait();
-      const event = receipt.logs
-        .map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
-        .find(e => e && e.name === "ProductCreated");
-      const id = event?.args?.productId?.toString() || "unknown";
-      setProductId(id);
-      setStatus(`✅ Product created! ID: ${id}`);
-      setProductName("");
-    } catch (err) {
-      setStatus("❌ Error: " + err.message.split("(")[0]);
-    }
+export default function Manufacturer() {
+  const s = useSession()
+  const d = useDirectory()
+  const standing = useStanding()
+  const partners = useActiveLicensees()
+  const { run, busy } = useTx()
+  const { buttons, modals } = useProductModals()
+  const [tab, setTab] = useState('products')
+  const [filter, setFilter] = useState('all')
+  const [form, setForm] = useState(EMPTY_FORM)
+
+  const products = useLoad(async () => loadProducts(await reader().pt.getManufacturerProducts(s.address)), [s.address])
+  const list = products.data || []
+  const mine = p => sameAddr(p.holder, s.address)
+  const groups = {
+    all: list,
+    stock: list.filter(p => p.status === 0 && mine(p)),
+    transit: list.filter(p => p.status === 1),
+    downstream: list.filter(p => p.status === 0 && !mine(p)),
+    delivered: list.filter(p => p.status === 2),
+    cancelled: list.filter(p => p.status === 3),
+  }
+  const shown = groups[filter]
+  const canCreate = standing.data?.ok
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  async function create(e) {
+    e.preventDefault()
+    const qty = Number(form.quantity)
+    if (!form.name.trim() || !(qty >= 1)) return
+    await run('create', () => s.write.pt.createProduct(form.name.trim(), '', BigInt(Math.floor(qty)), form.description.trim(), form.batch.trim()), {
+      success: `Product “${form.name.trim()}” created.`,
+      onDone: async () => { setForm(EMPTY_FORM); setFilter('stock'); await products.reload() },
+    })
   }
 
-  async function commitTransfer() {
-    if (!signer) return setStatus("❌ Connect wallet first");
-    if (!productId || !secret || !recipient || !transferCredId)
-      return setStatus("❌ Fill in all transfer fields");
-    try {
-      setStatus("⏳ Committing transfer...");
-      const pt = getContract("ProductTransfer", signer);
-      const secretHash = ethers.keccak256(ethers.toUtf8Bytes(secret));
-      const tx = await pt.commitTransfer(BigInt(productId), secretHash, recipient, transferCredId);
-      await tx.wait();
-      setStatus(`✅ Transfer committed! Share secret "${secret}" with distributor off-chain.`);
-    } catch (err) {
-      setStatus("❌ Error: " + err.message.split("(")[0]);
-    }
+  const recall = p => run('recall:' + p.id, () => s.write.pt.forceRecall(p.id), { success: `“${p.name}” recalled to your inventory.`, onDone: products.reload })
+  const cancel = p => run('cancel:' + p.id, () => s.write.pt.cancelShipment(p.id), { success: 'Shipment cancelled — product is back in stock.', onDone: products.reload })
+
+  function actionsFor(p) {
+    return (
+      <>
+        {buttons(p)}
+        {p.status === 1 && mine(p) && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'cancel:' + p.id} onClick={() => cancel(p)}>Cancel shipment</Button>}
+        {p.status !== 3 && !mine(p) && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'recall:' + p.id} onClick={() => recall(p)}>Force recall</Button>}
+      </>
+    )
   }
 
   return (
-    <div>
-      <h2>🏭 Manufacturer</h2>
+    <div className="page">
+      <PageHead session={s} title={s.company} />
+      <div style={{ marginBottom: 20 }}><LicenceBanner standing={standing} /></div>
 
-      <div style={card}>
-        <h3 style={{ marginBottom: 4 }}>Create Product</h3>
-        <label style={lbl}>Product Name</label>
-        <input style={inp} value={productName} onChange={e => setProductName(e.target.value)}
-          placeholder="e.g. Widget-Alpha-001" />
-
-        <label style={lbl}>Manufacturing Credential ID</label>
-        <input style={inp} value={mfCredId} onChange={e => setMfCredId(e.target.value)}
-          placeholder="0x... (from LG page)" />
-
-        <button onClick={createProduct} style={{ ...btn, marginTop: 14 }}>
-          Create Product
-        </button>
+      <div className="grid grid-stats" style={{ marginBottom: 20 }}>
+        <Stat label="In stock" value={groups.stock.length} />
+        <Stat label="In transit" value={groups.transit.length} />
+        <Stat label="With partners" value={groups.downstream.length + groups.delivered.length} hint={`${groups.delivered.length} delivered to retailers`} />
+        <Stat label="Active distributors" value={partners.data?.length ?? '…'} />
       </div>
 
-      <div style={card}>
-        <h3 style={{ marginBottom: 4 }}>Commit Transfer to Distributor</h3>
-        <label style={lbl}>Product ID</label>
-        <input style={inp} value={productId} onChange={e => setProductId(e.target.value)}
-          placeholder="e.g. 1" />
+      <Tabs value={tab} onChange={setTab} tabs={[
+        { id: 'products', label: 'Products', icon: '📦', count: list.length },
+        { id: 'partners', label: 'Distributors', icon: '🚚', count: partners.data?.length },
+        { id: 'lookup', label: 'Product lookup', icon: '🔍' },
+        { id: 'email', label: 'Notifications', icon: '📧' },
+      ]} />
 
-        <label style={lbl}>Recipient Address (Distributor)</label>
-        <input style={inp} value={recipient} onChange={e => setRecipient(e.target.value)}
-          placeholder="0x..." />
+      {tab === 'products' && (
+        <div className="grid grid-aside">
+          <Card title="Create a product" subtitle="Mints a product token in your name. Requires an active Manufacturing License.">
+            {!canCreate && !standing.loading && <div style={{ marginBottom: 14 }}><Alert type="warning">You need an active Manufacturing License to create products.</Alert></div>}
+            <form className="form" onSubmit={create}>
+              <Field label="Product name"><input className="input" placeholder="e.g. Widget Model X" value={form.name} onChange={set('name')} disabled={!canCreate} maxLength={80} /></Field>
+              <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Field label="Quantity"><input className="input" type="number" min="1" value={form.quantity} onChange={set('quantity')} disabled={!canCreate} /></Field>
+                <Field label="Batch number"><input className="input" placeholder="BATCH-001" value={form.batch} onChange={set('batch')} disabled={!canCreate} maxLength={40} /></Field>
+              </div>
+              <Field label="Description" hint="Optional"><input className="input" placeholder="e.g. Electronics, 12V" value={form.description} onChange={set('description')} disabled={!canCreate} maxLength={200} /></Field>
+              <Button type="submit" block loading={busy === 'create'} disabled={!canCreate || !form.name.trim() || !(Number(form.quantity) >= 1)}>📦 Create product</Button>
+            </form>
+          </Card>
 
-        <label style={lbl}>Secret (share off-chain with distributor)</label>
-        <input style={inp} value={secret} onChange={e => setSecret(e.target.value)}
-          placeholder="e.g. HANDSHAKE_MF_DT_001" />
+          <Card title="Your products" bodyClass="" actions={<Button variant="ghost" size="sm" onClick={() => { products.reload(); partners.reload() }}>↻ Refresh</Button>}>
+            <div style={{ marginBottom: 14 }}>
+              <FilterChips value={filter} onChange={setFilter} options={[
+                ['all', 'All', groups.all.length], ['stock', 'In stock', groups.stock.length], ['transit', 'In transit', groups.transit.length],
+                ['downstream', 'At distributor', groups.downstream.length], ['delivered', 'Delivered', groups.delivered.length], ['cancelled', 'Cancelled', groups.cancelled.length],
+              ]} />
+            </div>
+            {products.loading ? <Loading /> : products.error ? <Alert type="error">{products.error}</Alert>
+              : !shown.length ? <Empty icon="📦" title={list.length ? 'Nothing in this view' : 'No products yet'}>{list.length ? 'Try another filter.' : 'Create your first product on the left.'}</Empty>
+              : shown.map(p => (
+                <ProductItem key={p.id} p={p} actions={actionsFor(p)}
+                  foot={p.status === 0 && mine(p) && (
+                    <ShipForm product={p} partners={partners.data || []} partnerLabel="Distributor" onShipped={products.reload} />
+                  )} />
+              ))}
+          </Card>
+        </div>
+      )}
 
-        <label style={lbl}>Distributor's Credential ID</label>
-        <input style={inp} value={transferCredId} onChange={e => setTransferCredId(e.target.value)}
-          placeholder="0x..." />
-
-        <button onClick={commitTransfer} style={{ ...btn, marginTop: 14 }}>
-          Commit Transfer
-        </button>
-      </div>
-
-      {status && <p style={{ marginTop: 12, fontWeight: 500 }}>{status}</p>}
+      {tab === 'partners' && <LicencePanel standing={standing} onChange={partners.reload} />}
+      {tab === 'lookup' && <ProductLookup />}
+      {tab === 'email' && <EmailSettings address={s.address} signer={s.signer} />}
+      {modals}
+      {d.error && <Alert type="error">{d.error}</Alert>}
     </div>
-  );
+  )
 }
-
-const card = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 20, background: "#fff", marginBottom: 16 };
-const lbl = { display: "block", fontSize: 13, color: "#6b7280", marginBottom: 4, marginTop: 12 };
-const inp = { width: "100%", padding: "9px 12px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 14, boxSizing: "border-box" };
-const btn = { padding: "10px 18px", background: "#1a56db", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600 };

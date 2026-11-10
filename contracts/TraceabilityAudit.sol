@@ -1,49 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-interface IProductTransfer {
-    enum Status { InStock, InTransit, Delivered, Cancelled }
+import "./ProductTransfer.sol";
+import "./CredentialRegistry.sol";
+import "./DIDRegistry.sol";
 
-    struct TransferRecord {
-        address from;
-        address to;
-        uint256 timestamp;
-        bool    confirmed;
-        bool    cancelled;
-    }
-
-    struct Product {
-        uint256 id;
-        string  name;
-        string  ipfsCID;
-        address manufacturer;
-        address currentHolder;
-        address pendingRecipient;
-        Status  status;
-        uint256 createdAt;
-    }
-
-    function getProduct(uint256 productId) external view returns (Product memory);
-    function getTransferHistory(uint256 productId) external view returns (TransferRecord[] memory);
-}
-
-interface ICredentialRegistry {
-    function isCredentialValid(address holder) external view returns (bool);
-}
-
-interface IDIDRegistry {
-    struct DIDDocument {
-        string  did;
-        string  role;
-        address controller;
-        uint256 createdAt;
-        bool    active;
-    }
-    function getDID(address controller) external view returns (DIDDocument memory);
-}
-
+/// @title TraceabilityAudit — public, read-only chain-of-custody verification
 contract TraceabilityAudit {
-
     struct AuditResult {
         bool    verified;
         uint256 productId;
@@ -58,135 +21,63 @@ contract TraceabilityAudit {
         string  failReason;
     }
 
-    IProductTransfer    public immutable productTransfer;
-    ICredentialRegistry public immutable credRegistry;
-    IDIDRegistry        public immutable didRegistry;
+    ProductTransfer    public immutable productTransfer;
+    CredentialRegistry public immutable credRegistry;
+    DIDRegistry        public immutable didRegistry;
 
-    constructor(
-        address _productTransfer,
-        address _credRegistry,
-        address _didRegistry
-    ) {
-        productTransfer = IProductTransfer(_productTransfer);
-        credRegistry    = ICredentialRegistry(_credRegistry);
-        didRegistry     = IDIDRegistry(_didRegistry);
+    constructor(address _productTransfer, address _credRegistry, address _didRegistry) {
+        productTransfer = ProductTransfer(_productTransfer);
+        credRegistry    = CredentialRegistry(_credRegistry);
+        didRegistry     = DIDRegistry(_didRegistry);
     }
 
-    function auditProduct(uint256 productId)
-        external
-        view
-        returns (AuditResult memory result)
-    {
-        result.productId = productId;
+    function auditProduct(uint256 productId) public view returns (AuditResult memory r) {
+        r.productId = productId;
 
-        IProductTransfer.Product memory p;
-        try productTransfer.getProduct(productId) returns (IProductTransfer.Product memory _p) {
-            p = _p;
-        } catch {
-            result.verified   = false;
-            result.failReason = "Product not found";
-            return result;
+        ProductTransfer.Product memory p;
+        try productTransfer.getProduct(productId) returns (ProductTransfer.Product memory _p) { p = _p; }
+        catch { r.failReason = "Product not found"; return r; }
+
+        r.productName    = p.name;
+        r.ipfsCID        = p.ipfsCID;
+        r.manufacturer   = p.manufacturer;
+        r.manufacturedAt = p.createdAt;
+
+        if (p.status == ProductTransfer.Status.Cancelled) { r.failReason = "Product was cancelled"; return r; }
+
+        ProductTransfer.TransferRecord[] memory h = productTransfer.getTransferHistory(productId);
+
+        // Walk confirmed, non-cancelled hops; the latest MF→DT followed by DT→RT is the custody chain.
+        ProductTransfer.TransferRecord memory mfToDt;
+        ProductTransfer.TransferRecord memory dtToRt;
+        bool haveMf; bool haveRt;
+        for (uint256 i = 0; i < h.length; i++) {
+            if (!h[i].confirmed || h[i].cancelled) continue;
+            if (h[i].from == p.manufacturer) { mfToDt = h[i]; haveMf = true; haveRt = false; }
+            else if (haveMf && h[i].from == mfToDt.to) { dtToRt = h[i]; haveRt = true; }
+        }
+        if (!haveMf || !haveRt) { r.failReason = "Incomplete chain: product has not reached a retailer yet"; return r; }
+        if (p.currentHolder != dtToRt.to || p.status != ProductTransfer.Status.Delivered) {
+            r.failReason = "Product is no longer with the retailer (recalled or reclaimed)"; return r;
         }
 
-        result.productName    = p.name;
-        result.ipfsCID        = p.ipfsCID;
-        result.manufacturer   = p.manufacturer;
-        result.manufacturedAt = p.createdAt;
+        r.distributor          = mfToDt.to;
+        r.retailer             = dtToRt.to;
+        r.shippedToDistributor = mfToDt.timestamp;
+        r.shippedToRetailer    = dtToRt.timestamp;
 
-        IProductTransfer.TransferRecord[] memory history;
-        try productTransfer.getTransferHistory(productId) returns (
-            IProductTransfer.TransferRecord[] memory _h
-        ) {
-            history = _h;
-        } catch {
-            result.verified   = false;
-            result.failReason = "Could not load transfer history";
-            return result;
-        }
+        if (!didRegistry.hasRole(r.manufacturer, "Manufacturer")) { r.failReason = "Manufacturer DID is not active or role is incorrect"; return r; }
+        if (!didRegistry.hasRole(r.distributor,  "Distributor"))  { r.failReason = "Distributor DID is not active or role is incorrect";  return r; }
+        if (!didRegistry.hasRole(r.retailer,     "Retailer"))     { r.failReason = "Retailer DID is not active or role is incorrect";     return r; }
 
-        // Find first two confirmed, non-cancelled transfers (skips cancelled attempts)
-        IProductTransfer.TransferRecord memory mfToDt;
-        IProductTransfer.TransferRecord memory dtToRt;
-        uint256 confirmedCount = 0;
+        if (!credRegistry.isCredentialValid(r.manufacturer)) { r.failReason = "Manufacturer licence is not valid"; return r; }
+        if (!credRegistry.isCredentialValid(r.distributor))  { r.failReason = "Distributor licence is not valid";  return r; }
+        if (!credRegistry.isCredentialValid(r.retailer))     { r.failReason = "Retailer licence is not valid";     return r; }
 
-        for (uint256 i = 0; i < history.length; i++) {
-            if (history[i].confirmed && !history[i].cancelled) {
-                if (confirmedCount == 0) {
-                    mfToDt = history[i];
-                    confirmedCount++;
-                } else if (confirmedCount == 1) {
-                    dtToRt = history[i];
-                    confirmedCount++;
-                    break;
-                }
-            }
-        }
-
-        if (confirmedCount < 2) {
-            result.verified   = false;
-            result.failReason = "Incomplete chain: product has not reached retailer yet";
-            return result;
-        }
-
-        result.distributor          = mfToDt.to;
-        result.retailer             = dtToRt.to;
-        result.shippedToDistributor = mfToDt.timestamp;
-        result.shippedToRetailer    = dtToRt.timestamp;
-
-        if (mfToDt.from != p.manufacturer) {
-            result.verified   = false;
-            result.failReason = "Chain broken: first transfer not from original manufacturer";
-            return result;
-        }
-        if (dtToRt.from != mfToDt.to) {
-            result.verified   = false;
-            result.failReason = "Chain broken: DT address mismatch between transfers";
-            return result;
-        }
-
-        if (!credRegistry.isCredentialValid(p.manufacturer)) {
-            result.verified   = false;
-            result.failReason = "Manufacturer credential is not valid";
-            return result;
-        }
-        if (!credRegistry.isCredentialValid(result.distributor)) {
-            result.verified   = false;
-            result.failReason = "Distributor credential is not valid";
-            return result;
-        }
-        if (!credRegistry.isCredentialValid(result.retailer)) {
-            result.verified   = false;
-            result.failReason = "Retailer credential is not valid";
-            return result;
-        }
-
-        IDIDRegistry.DIDDocument memory mfDoc = didRegistry.getDID(p.manufacturer);
-        IDIDRegistry.DIDDocument memory dtDoc = didRegistry.getDID(result.distributor);
-        IDIDRegistry.DIDDocument memory rtDoc = didRegistry.getDID(result.retailer);
-
-        if (!mfDoc.active || keccak256(bytes(mfDoc.role)) != keccak256(bytes("Manufacturer"))) {
-            result.verified   = false;
-            result.failReason = "Manufacturer DID is not active or role is incorrect";
-            return result;
-        }
-        if (!dtDoc.active || keccak256(bytes(dtDoc.role)) != keccak256(bytes("Distributor"))) {
-            result.verified   = false;
-            result.failReason = "Distributor DID is not active or role is incorrect";
-            return result;
-        }
-        if (!rtDoc.active || keccak256(bytes(rtDoc.role)) != keccak256(bytes("Retailer"))) {
-            result.verified   = false;
-            result.failReason = "Retailer DID is not active or role is incorrect";
-            return result;
-        }
-
-        result.verified   = true;
-        result.failReason = "";
-        return result;
+        r.verified = true;
     }
 
     function isVerified(uint256 productId) external view returns (bool) {
-        AuditResult memory r = this.auditProduct(productId);
-        return r.verified;
+        return auditProduct(productId).verified;
     }
 }

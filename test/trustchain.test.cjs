@@ -1,255 +1,231 @@
 const { expect } = require("chai");
-const hre = require("hardhat");
-const ethers = hre.ethers;
+const { ethers } = require("hardhat");
+const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
-describe("SSI Supply Chain — 5 Contract Suite", function () {
-  let rootGA, lg, mf, dt, rt, attacker;
-  let trustRegistry, auditLog, didRegistry, credRegistry, productTransfer;
-  let mfLicCredId, dtCredId, rtCredId;
+const DAY = 86400;
+const Status = { InStock: 0n, InTransit: 1n, Delivered: 2n, Cancelled: 3n };
 
-  before(async function () {
-    [rootGA, lg, mf, dt, rt, attacker] = await ethers.getSigners();
+async function deployAll() {
+  const [rootGA, lg, mf, dt, rt, mf2, dt2, rt2, outsider] = await ethers.getSigners();
+  const audit = await (await ethers.getContractFactory("AuditLog")).deploy();
+  const trust = await (await ethers.getContractFactory("TrustRegistry")).deploy();
+  const did   = await (await ethers.getContractFactory("DIDRegistry")).deploy(trust, audit);
+  const cred  = await (await ethers.getContractFactory("CredentialRegistry")).deploy(trust, did, audit);
+  const pt    = await (await ethers.getContractFactory("ProductTransfer")).deploy(cred, did, audit);
+  const ta    = await (await ethers.getContractFactory("TraceabilityAudit")).deploy(pt, cred, did);
+  for (const c of [did, cred, pt]) await audit.registerContract(c, "c");
+  return { rootGA, lg, mf, dt, rt, mf2, dt2, rt2, outsider, audit, trust, did, cred, pt, ta };
+}
 
-    const Trust = await ethers.getContractFactory("TrustRegistry");
-    trustRegistry = await Trust.deploy();
+const expiry = async (days = 365) => (await time.latest()) + days * DAY;
 
-    const Audit = await ethers.getContractFactory("AuditLog");
-    auditLog = await Audit.deploy();
+/** Registers everyone and builds the full licence chain LG→MF→DT→RT. */
+async function fullChain() {
+  const f = await deployAll();
+  const { lg, mf, dt, rt, did, trust, cred } = f;
+  await did.connect(lg).registerDID("LocalGovt", "City of Kansas");
+  await did.connect(mf).registerDID("Manufacturer", "Acme Corp");
+  await did.connect(dt).registerDID("Distributor", "FastShip");
+  await did.connect(rt).registerDID("Retailer", "CornerShop");
+  await trust.authorizeIssuer(lg, "LocalGovt");
+  await cred.connect(lg).issueCredential(mf, await expiry());
+  await cred.connect(mf).issueCredential(dt, await expiry());
+  await cred.connect(dt).issueCredential(rt, await expiry());
+  return f;
+}
 
-    const DID = await ethers.getContractFactory("DIDRegistry");
-    didRegistry = await DID.deploy(
-      await trustRegistry.getAddress(),
-      await auditLog.getAddress()
-    );
+async function createProduct(pt, mf, name = "Widget") {
+  const tx = await pt.connect(mf).createProduct(name, "", 10, "desc", "BATCH-1");
+  const rc = await tx.wait();
+  return rc.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
+    .find(e => e?.name === "ProductCreated").args.id;
+}
 
-    const Cred = await ethers.getContractFactory("CredentialRegistry");
-    credRegistry = await Cred.deploy(
-      await trustRegistry.getAddress(),
-      await didRegistry.getAddress(),
-      await auditLog.getAddress()
-    );
-
-    const PT = await ethers.getContractFactory("ProductTransfer");
-    productTransfer = await PT.deploy(
-      await credRegistry.getAddress(),
-      await auditLog.getAddress()
-    );
-
-    await auditLog.registerContract(await didRegistry.getAddress(),     "DIDRegistry");
-    await auditLog.registerContract(await credRegistry.getAddress(),    "CredentialRegistry");
-    await auditLog.registerContract(await productTransfer.getAddress(), "ProductTransfer");
+describe("DIDRegistry", () => {
+  it("stores role + company name on-chain", async () => {
+    const { did, mf } = await deployAll();
+    await did.connect(mf).registerDID("Manufacturer", "Acme Corp");
+    const d = await did.getDID(mf);
+    expect(d.companyName).to.equal("Acme Corp");
+    expect(d.role).to.equal("Manufacturer");
+    expect(d.did).to.match(/^did:besu:0x/);
+    expect(d.active).to.be.true;
   });
 
-  describe("TrustRegistry", function () {
-    it("rootGA is the deployer", async function () {
-      expect(await trustRegistry.rootGA()).to.equal(rootGA.address);
-    });
-
-    it("rootGA can authorize issuers", async function () {
-      await trustRegistry.authorizeIssuer(lg.address, "LocalGovt");
-      await trustRegistry.authorizeIssuer(mf.address, "Manufacturer");
-      await trustRegistry.authorizeIssuer(dt.address, "Distributor");
-      await trustRegistry.authorizeIssuer(rt.address, "Retailer");
-      expect(await trustRegistry.isAuthorizedIssuer(lg.address)).to.be.true;
-      expect(await trustRegistry.isAuthorizedIssuer(mf.address)).to.be.true;
-    });
-
-    it("non-rootGA CANNOT authorize issuers", async function () {
-      await expect(
-        trustRegistry.connect(attacker).authorizeIssuer(attacker.address, "Hacker")
-      ).to.be.revertedWith("TrustRegistry: caller is not rootGA");
-    });
-
-    it("rootGA can revoke an issuer", async function () {
-      await trustRegistry.authorizeIssuer(attacker.address, "Temp");
-      await trustRegistry.revokeIssuer(attacker.address);
-      expect(await trustRegistry.isAuthorizedIssuer(attacker.address)).to.be.false;
-    });
+  it("rejects duplicate company names (case-insensitive)", async () => {
+    const { did, mf, dt } = await deployAll();
+    await did.connect(mf).registerDID("Manufacturer", "Acme Corp");
+    expect(await did.isNameAvailable("ACME corp")).to.be.false;
+    await expect(did.connect(dt).registerDID("Distributor", "acme CORP"))
+      .to.be.revertedWith("DIDRegistry: company name already taken");
   });
 
-  describe("DIDRegistry", function () {
-    it("authorized actors can register DIDs", async function () {
-      await didRegistry.connect(lg).registerDID("LocalGovt");
-      await didRegistry.connect(mf).registerDID("Manufacturer");
-      await didRegistry.connect(dt).registerDID("Distributor");
-      await didRegistry.connect(rt).registerDID("Retailer");
-      expect(await didRegistry.isActiveDID(lg.address)).to.be.true;
-    });
-
-    it("unauthorized address CANNOT register DID", async function () {
-      await expect(
-        didRegistry.connect(attacker).registerDID("Hacker")
-      ).to.be.revertedWith("DIDRegistry: caller not authorized in TrustRegistry");
-    });
-
-    it("DID string starts with did:besu:0x", async function () {
-      const did = await didRegistry.getDID(mf.address);
-      expect(did).to.match(/^did:besu:0x/);
-    });
-
-    it("cannot register DID twice", async function () {
-      await expect(
-        didRegistry.connect(lg).registerDID("LocalGovt")
-      ).to.be.revertedWith("DIDRegistry: DID already registered for this address");
-    });
+  it("rejects invalid roles, bad names, double registration and rootGA", async () => {
+    const { did, rootGA, mf } = await deployAll();
+    await expect(did.connect(mf).registerDID("Hacker", "X Co")).to.be.revertedWith("DIDRegistry: invalid role");
+    await expect(did.connect(mf).registerDID("Manufacturer", " Acme")).to.be.revertedWith("DIDRegistry: company name has leading or trailing spaces");
+    await expect(did.connect(mf).registerDID("Manufacturer", "A")).to.be.revertedWith("DIDRegistry: company name must be 2-64 characters");
+    await expect(did.connect(rootGA).registerDID("LocalGovt", "Root")).to.be.revertedWith("DIDRegistry: rootGA does not register a DID");
+    await did.connect(mf).registerDID("Manufacturer", "Acme");
+    await expect(did.connect(mf).registerDID("Manufacturer", "Acme 2")).to.be.revertedWith("DIDRegistry: already registered");
   });
 
-  describe("CredentialRegistry", function () {
-    it("authorized issuer with DID can issue ManufacturingLicense", async function () {
-      const tx = await credRegistry.connect(lg).issueCredential(mf.address, "ManufacturingLicense", 365);
-      const receipt = await tx.wait();
-      const event = receipt.logs
-        .map(l => { try { return credRegistry.interface.parseLog(l); } catch { return null; } })
-        .find(e => e && e.name === "CredentialIssued");
-      mfLicCredId = event.args.credentialId;
-      expect(mfLicCredId).to.not.equal(ethers.ZeroHash);
-    });
+  it("returns the full directory", async () => {
+    const { did } = await fullChain();
+    const all = await did.getAllDIDs();
+    expect(all.map(d => d.companyName)).to.deep.equal(["City of Kansas", "Acme Corp", "FastShip", "CornerShop"]);
+  });
+});
 
-    it("unauthorized issuer CANNOT issue a credential", async function () {
-      await expect(
-        credRegistry.connect(attacker).issueCredential(mf.address, "FakeCredential", 30)
-      ).to.be.revertedWith("CredentialRegistry: issuer not authorized in TrustRegistry");
-    });
+describe("TrustRegistry", () => {
+  it("only rootGA can grant / revoke the LG licence", async () => {
+    const { trust, lg, outsider } = await deployAll();
+    await expect(trust.connect(outsider).authorizeIssuer(lg, "LocalGovt")).to.be.revertedWith("TrustRegistry: caller is not rootGA");
+    await trust.authorizeIssuer(lg, "LocalGovt");
+    await expect(trust.authorizeIssuer(lg, "LocalGovt")).to.be.revertedWith("TrustRegistry: already authorized");
+    await trust.revokeIssuer(lg);
+    await trust.authorizeIssuer(lg, "LocalGovt");
+    expect(await trust.getIssuers()).to.deep.equal([lg.address]); // no duplicates after re-authorization
+  });
+});
 
-    it("issue TradeLicense for DT and RT", async function () {
-      let tx = await credRegistry.connect(mf).issueCredential(dt.address, "TradeLicense", 180);
-      let receipt = await tx.wait();
-      dtCredId = receipt.logs
-        .map(l => { try { return credRegistry.interface.parseLog(l); } catch { return null; } })
-        .find(e => e && e.name === "CredentialIssued").args.credentialId;
-
-      tx = await credRegistry.connect(dt).issueCredential(rt.address, "TradeLicense", 180);
-      receipt = await tx.wait();
-      rtCredId = receipt.logs
-        .map(l => { try { return credRegistry.interface.parseLog(l); } catch { return null; } })
-        .find(e => e && e.name === "CredentialIssued").args.credentialId;
-
-      expect(dtCredId).to.not.equal(ethers.ZeroHash);
-      expect(rtCredId).to.not.equal(ethers.ZeroHash);
-    });
-
-    it("8-point verify passes for valid credential", async function () {
-      const [valid, reason] = await credRegistry.verifyCredential(mfLicCredId, mf.address, "ManufacturingLicense", 0);
-      expect(valid).to.be.true;
-      expect(reason).to.equal("");
-    });
-
-    it("CHECK2: revoked credential fails", async function () {
-      const tx = await credRegistry.connect(lg).issueCredential(mf.address, "TempLicense", 10);
-      const receipt = await tx.wait();
-      const tempId = receipt.logs
-        .map(l => { try { return credRegistry.interface.parseLog(l); } catch { return null; } })
-        .find(e => e && e.name === "CredentialIssued").args.credentialId;
-      await credRegistry.connect(lg).revokeCredential(tempId);
-      const [valid, reason] = await credRegistry.verifyCredential(tempId, mf.address, "", 0);
-      expect(valid).to.be.false;
-      expect(reason).to.include("CHECK2_FAIL");
-    });
-
-    it("CHECK4: cascading revocation when issuer is revoked", async function () {
-      const signers = await ethers.getSigners();
-      const tempIssuer = signers[6];
-      await trustRegistry.authorizeIssuer(tempIssuer.address, "TempIssuer");
-      await didRegistry.connect(tempIssuer).registerDID("TempIssuer");
-      const tx = await credRegistry.connect(tempIssuer).issueCredential(mf.address, "TempCred2", 30);
-      const receipt = await tx.wait();
-      const tempCredId = receipt.logs
-        .map(l => { try { return credRegistry.interface.parseLog(l); } catch { return null; } })
-        .find(e => e && e.name === "CredentialIssued").args.credentialId;
-      await trustRegistry.revokeIssuer(tempIssuer.address);
-      const [valid, reason] = await credRegistry.verifyCredential(tempCredId, mf.address, "", 0);
-      expect(valid).to.be.false;
-      expect(reason).to.include("CHECK4_FAIL");
-    });
-
-    it("CHECK7: wrong credential type fails", async function () {
-      const [valid, reason] = await credRegistry.verifyCredential(mfLicCredId, mf.address, "TradeLicense", 0);
-      expect(valid).to.be.false;
-      expect(reason).to.include("CHECK7_FAIL");
-    });
+describe("CredentialRegistry — licence chain", () => {
+  it("builds LG→MF→DT→RT with the right licence types", async () => {
+    const { cred, mf, dt, rt, lg } = await fullChain();
+    for (const [who, issuer, type] of [[mf, lg, "ManufacturingLicense"], [dt, mf, "TradeLicense"], [rt, dt, "TradeLicense"]]) {
+      expect(await cred.isCredentialValid(who)).to.be.true;
+      expect(await cred.licensedBy(who)).to.equal(issuer.address);
+      const c = await cred.getCredential(await cred.activeCredentialOf(who));
+      expect(c.credType).to.equal(type);
+    }
   });
 
-  describe("ProductTransfer", function () {
-    let productId;
-    const secret = "TEST_SECRET_XYZ";
-    const secret2 = "DT_TO_RT_HANDSHAKE";
-
-    it("MF creates product with valid ManufacturingLicense", async function () {
-      const tx = await productTransfer.connect(mf).createProduct("Widget-001", mfLicCredId);
-      const receipt = await tx.wait();
-      const event = receipt.logs
-        .map(l => { try { return productTransfer.interface.parseLog(l); } catch { return null; } })
-        .find(e => e && e.name === "ProductCreated");
-      productId = event.args.productId;
-      expect(productId).to.not.equal(0n);
-    });
-
-    it("credential is linked to product after creation", async function () {
-      const cred = await credRegistry.getCredential(mfLicCredId);
-      expect(cred.productLinked).to.be.true;
-      expect(cred.linkedProductId).to.equal(productId);
-    });
-
-    it("CHECK8: credential linked to wrong product fails", async function () {
-      const [valid, reason] = await credRegistry.verifyCredential(mfLicCredId, mf.address, "ManufacturingLicense", 999n);
-      expect(valid).to.be.false;
-      expect(reason).to.include("CHECK8_FAIL");
-    });
-
-    it("MF commits transfer to DT with secret hash", async function () {
-      const hash = ethers.keccak256(ethers.toUtf8Bytes(secret));
-      await expect(
-        productTransfer.connect(mf).commitTransfer(productId, hash, dt.address, dtCredId)
-      ).to.emit(productTransfer, "TransferCommitted");
-    });
-
-    it("wrong secret CANNOT claim", async function () {
-      await expect(
-        productTransfer.connect(dt).claimTransfer(productId, "WRONG_SECRET")
-      ).to.be.revertedWith("ProductTransfer: secret does not match commitment (wrong secret)");
-    });
-
-    it("wrong recipient CANNOT claim even with correct secret", async function () {
-      await expect(
-        productTransfer.connect(attacker).claimTransfer(productId, secret)
-      ).to.be.revertedWith("ProductTransfer: caller is not the pending recipient");
-    });
-
-    it("correct recipient with correct secret CAN claim", async function () {
-      await expect(
-        productTransfer.connect(dt).claimTransfer(productId, secret)
-      ).to.emit(productTransfer, "TransferClaimed");
-      const p = await productTransfer.getProduct(productId);
-      expect(p.currentHolder).to.equal(dt.address);
-    });
-
-    it("DT transfers to RT — RT becomes final holder with Delivered status", async function () {
-      const hash2 = ethers.keccak256(ethers.toUtf8Bytes(secret2));
-      await productTransfer.connect(dt).commitTransfer(productId, hash2, rt.address, rtCredId);
-      await productTransfer.connect(rt).claimTransfer(productId, secret2);
-      const p = await productTransfer.getProduct(productId);
-      expect(p.currentHolder).to.equal(rt.address);
-      expect(p.status).to.equal(0n); // Delivered
-    });
+  it("LG must be licensed by rootGA first", async () => {
+    const { did, cred, lg, mf } = await deployAll();
+    await did.connect(lg).registerDID("LocalGovt", "City");
+    await did.connect(mf).registerDID("Manufacturer", "Acme");
+    await expect(cred.connect(lg).issueCredential(mf, await expiry()))
+      .to.be.revertedWith("CredentialRegistry: Local Government is not licensed by rootGA");
   });
 
-  describe("AuditLog", function () {
-    it("has recorded all actions", async function () {
-      const total = await auditLog.totalEntries();
-      expect(total).to.be.gt(0n);
-      console.log("    Total audit entries:", total.toString());
-    });
+  it("each role can only licence the next role down", async () => {
+    const { did, cred, lg, mf, dt, rt, mf2, dt2, rt2 } = await fullChain();
+    await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");
+    await did.connect(dt2).registerDID("Distributor", "Beta Dist");
+    await did.connect(rt2).registerDID("Retailer", "Beta Shop");
+    const e = await expiry();
+    await expect(cred.connect(lg).issueCredential(dt2, e)).to.be.revertedWith("CredentialRegistry: Local Government can only licence Manufacturers");
+    await expect(cred.connect(mf).issueCredential(rt2, e)).to.be.revertedWith("CredentialRegistry: Manufacturers can only licence Distributors");
+    await expect(cred.connect(mf).issueCredential(mf2, e)).to.be.revertedWith("CredentialRegistry: Manufacturers can only licence Distributors");
+    await expect(cred.connect(dt).issueCredential(dt2, e)).to.be.revertedWith("CredentialRegistry: Distributors can only licence Retailers");
+    await expect(cred.connect(rt).issueCredential(rt2, e)).to.be.revertedWith("CredentialRegistry: your role cannot issue licences");
+    // an unlicensed manufacturer cannot licence anyone
+    await expect(cred.connect(mf2).issueCredential(dt2, e)).to.be.revertedWith("CredentialRegistry: your Manufacturing License is not active");
+  });
 
-    it("unregistered address CANNOT write to audit log", async function () {
-      await expect(
-        auditLog.connect(attacker).logAction(attacker.address, "HACK", "data")
-      ).to.be.revertedWith("AuditLog: caller not a registered contract");
-    });
+  it("one live licence per wallet", async () => {
+    const { did, cred, mf, dt, mf2, lg } = await fullChain();
+    await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");
+    await cred.connect(lg).issueCredential(mf2, await expiry());
+    await expect(cred.connect(mf2).issueCredential(dt, await expiry()))
+      .to.be.revertedWith("CredentialRegistry: holder already has an active licence. Revoke it first.");
+  });
 
-    it("non-rootGA CANNOT register a contract with AuditLog", async function () {
-      await expect(
-        auditLog.connect(attacker).registerContract(attacker.address, "FakeContract")
-      ).to.be.revertedWith("AuditLog: caller is not rootGA");
-    });
+  it("cascading revocation: revoking the LG suspends the whole chain, re-granting restores it", async () => {
+    const { trust, cred, lg, mf, dt, rt } = await fullChain();
+    await trust.revokeIssuer(lg);
+    for (const w of [mf, dt, rt]) expect(await cred.isCredentialValid(w)).to.be.false;
+    const [ok, reason] = await cred.verifyCredential(await (await cred.getCredentialsByHolder(dt))[0], dt, "TradeLicense");
+    expect(ok).to.be.false; expect(reason).to.include("CHECK6_FAIL");
+    await trust.authorizeIssuer(lg, "LocalGovt");
+    for (const w of [mf, dt, rt]) expect(await cred.isCredentialValid(w)).to.be.true;
+  });
+
+  it("only the issuer can revoke; revoked/expired licences are invalid", async () => {
+    const { cred, mf, dt, rt, lg } = await fullChain();
+    const dtCred = await cred.activeCredentialOf(dt);
+    await expect(cred.connect(lg).revokeCredential(dtCred)).to.be.revertedWith("CredentialRegistry: only issuer can revoke");
+    await cred.connect(mf).revokeCredential(dtCred);
+    expect(await cred.isCredentialValid(dt)).to.be.false;
+    expect(await cred.isCredentialValid(rt)).to.be.false; // RT was licensed by DT
+    // re-issue supersedes the old one
+    await cred.connect(mf).issueCredential(dt, (await time.latest()) + 10);
+    expect(await cred.isCredentialValid(dt)).to.be.true;
+    await time.increase(20);
+    expect(await cred.isCredentialValid(dt)).to.be.false;
+  });
+});
+
+describe("ProductTransfer", () => {
+  it("full flow MF → DT → RT, audit verified", async () => {
+    const { pt, ta, mf, dt, rt } = await fullChain();
+    const id = await createProduct(pt, mf);
+    await pt.connect(mf).shipTo(id, dt);
+    expect((await pt.getProduct(id)).status).to.equal(Status.InTransit);
+    expect(await pt.getShipmentsTo(dt)).to.deep.equal([id]);
+    await pt.connect(dt).confirmReceipt(id);
+    await pt.connect(dt).shipTo(id, rt);
+    await pt.connect(rt).confirmReceipt(id);
+    const p = await pt.getProduct(id);
+    expect(p.currentHolder).to.equal(rt.address);
+    expect(p.status).to.equal(Status.Delivered);
+    expect(await pt.ownerOf(id)).to.equal(rt.address);
+    const r = await ta.auditProduct(id);
+    expect(r.verified, r.failReason).to.be.true;
+    expect([r.manufacturer, r.distributor, r.retailer]).to.deep.equal([mf.address, dt.address, rt.address]);
+  });
+
+  it("only Manufacturers with a valid licence can create products", async () => {
+    const { pt, dt, did, mf2 } = await fullChain();
+    await expect(pt.connect(dt).createProduct("X", "", 1, "", "")).to.be.revertedWith("ProductTransfer: only Manufacturers can create products");
+    await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");
+    await expect(pt.connect(mf2).createProduct("X", "", 1, "", "")).to.be.revertedWith("ProductTransfer: no valid credential");
+  });
+
+  it("can only ship to partners you licensed", async () => {
+    const { pt, did, cred, lg, mf, dt, rt, mf2, dt2 } = await fullChain();
+    await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");
+    await did.connect(dt2).registerDID("Distributor", "Beta Dist");
+    await cred.connect(lg).issueCredential(mf2, await expiry());
+    await cred.connect(mf2).issueCredential(dt2, await expiry());
+    const id = await createProduct(pt, mf);
+    await expect(pt.connect(mf).shipTo(id, dt2)).to.be.revertedWith("ProductTransfer: recipient is not licensed by you");
+    await expect(pt.connect(mf).shipTo(id, rt)).to.be.revertedWith("ProductTransfer: recipient is not licensed by you");
+    await pt.connect(mf).shipTo(id, dt);
+  });
+
+  it("direct ERC-721 transfers are blocked", async () => {
+    const { pt, mf, dt } = await fullChain();
+    const id = await createProduct(pt, mf);
+    await expect(pt.connect(mf).transferFrom(mf, dt, id)).to.be.revertedWith("ProductTransfer: use shipTo / confirmReceipt");
+  });
+
+  it("cancel shipment, force recall (MF and DT), reclaim", async () => {
+    const { pt, cred, ta, mf, dt, rt } = await fullChain();
+    const id = await createProduct(pt, mf);
+    await pt.connect(mf).shipTo(id, dt);
+    await pt.connect(mf).cancelShipment(id);
+    expect((await pt.getProduct(id)).status).to.equal(Status.InStock);
+
+    await pt.connect(mf).shipTo(id, dt); await pt.connect(dt).confirmReceipt(id);
+    await pt.connect(dt).shipTo(id, rt); await pt.connect(rt).confirmReceipt(id);
+    await pt.connect(dt).forceRecall(id);                       // DT pulls back from RT
+    expect((await pt.getProduct(id)).currentHolder).to.equal(dt.address);
+    expect((await ta.auditProduct(id)).verified).to.be.false;
+
+    await pt.connect(mf).forceRecall(id);                       // MF pulls back from DT
+    expect((await pt.getProduct(id)).currentHolder).to.equal(mf.address);
+
+    await pt.connect(mf).shipTo(id, dt); await pt.connect(dt).confirmReceipt(id);
+    await cred.connect(mf).revokeCredential(await cred.activeCredentialOf(dt));
+    await pt.reclaimProduct(id);                                // anyone can trigger
+    expect((await pt.getProduct(id)).currentHolder).to.equal(mf.address);
+  });
+
+  it("writes to the audit log", async () => {
+    const { audit, pt, mf } = await fullChain();
+    const before = await audit.totalEntries();
+    await createProduct(pt, mf);
+    expect(await audit.totalEntries()).to.equal(before + 1n);
   });
 });

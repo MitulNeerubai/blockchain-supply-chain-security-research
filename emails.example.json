@@ -1,0 +1,4 @@
+{
+  "_README": "TEMPLATE. server.js creates and fills emails.json automatically when a company verifies its email in the app, so you normally don't need to touch it. To add one by hand: copy this file to emails.json and replace the line below with YOUR wallet address (all lowercase) and YOUR email. emails.json is git-ignored; never commit it.",
+  "0xpaste_your_wallet_address_in_lowercase": "paste_your_email@example.com"
+}

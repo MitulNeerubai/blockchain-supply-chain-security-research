@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+/// @title TrustRegistry — root of trust
+/// @notice The deployer becomes rootGA. Only rootGA can grant (or revoke) the
+///         Local Government licence that lets an LG issue Manufacturing Licences.
+///         Whether the wallet really registered as "LocalGovt" is enforced by
+///         CredentialRegistry at issue time, so this contract stays dependency-free.
 contract TrustRegistry {
     address public immutable rootGA;
-    mapping(address => bool) public authorizedIssuers;
+
+    mapping(address => bool)   public authorizedIssuers;
     mapping(address => string) public issuerRoles;
+    mapping(address => uint256) public authorizedAt;
+    mapping(address => bool)   private _listed;
     address[] private _issuerList;
 
     event IssuerAuthorized(address indexed issuer, string role, uint256 timestamp);
@@ -19,10 +27,13 @@ contract TrustRegistry {
 
     function authorizeIssuer(address issuer, string calldata role) external onlyRootGA {
         require(issuer != address(0), "TrustRegistry: zero address");
+        require(issuer != rootGA, "TrustRegistry: rootGA cannot be an issuer");
         require(bytes(role).length > 0, "TrustRegistry: empty role");
-        if (!authorizedIssuers[issuer]) _issuerList.push(issuer);
+        require(!authorizedIssuers[issuer], "TrustRegistry: already authorized");
+        if (!_listed[issuer]) { _listed[issuer] = true; _issuerList.push(issuer); }
         authorizedIssuers[issuer] = true;
         issuerRoles[issuer] = role;
+        authorizedAt[issuer] = block.timestamp;
         emit IssuerAuthorized(issuer, role, block.timestamp);
     }
 
@@ -40,6 +51,8 @@ contract TrustRegistry {
         return issuerRoles[issuer];
     }
 
+    /// @notice Every address that has ever been authorized (check isAuthorizedIssuer for current state).
+    function getIssuers() external view returns (address[] memory) { return _issuerList; }
     function getIssuerCount() external view returns (uint256) { return _issuerList.length; }
 
     function getIssuerAt(uint256 i) external view returns (address) {

@@ -2,24 +2,16 @@
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
+import "./CredentialRegistry.sol";
+import "./DIDRegistry.sol";
+import "./AuditLog.sol";
 
-interface ICredentialRegistry {
-    function isCredentialValid(address holder) external view returns (bool);
-}
-
-interface IDIDRegistry {
-    struct DIDDocument {
-        string  did;
-        string  role;
-        address controller;
-        uint256 createdAt;
-        bool    active;
-    }
-    function getDID(address controller) external view returns (DIDDocument memory);
-}
-
+/// @title ProductTransfer — products as ERC-721 tokens moving MF → DT → RT
+/// @notice Shipping is only allowed to a partner YOU licensed:
+///         a Manufacturer ships to Distributors it licensed, a Distributor ships
+///         to Retailers it licensed. Every handoff is two-step (ship, confirm).
 contract ProductTransfer is ERC721 {
-
     enum Status { InStock, InTransit, Delivered, Cancelled }
 
     struct TransferRecord {
@@ -39,22 +31,24 @@ contract ProductTransfer is ERC721 {
         address pendingRecipient;
         Status  status;
         uint256 createdAt;
-        uint256  quantity;
-        string   description;
-        string   batchNumber;
+        uint256 quantity;
+        string  description;
+        string  batchNumber;
     }
 
-    ICredentialRegistry public immutable credRegistry;
-    IDIDRegistry        public immutable didRegistry;
+    CredentialRegistry public immutable credRegistry;
+    DIDRegistry        public immutable didRegistry;
+    AuditLog           public immutable auditLog;
 
     uint256 private _nextId = 1;
 
-    mapping(uint256 => Product)          public products;
-    mapping(uint256 => TransferRecord[]) public transferHistory;
+    mapping(uint256 => Product)          private _products;
+    mapping(uint256 => TransferRecord[]) private _history;
     mapping(address => uint256[])        private _manufacturerProducts;
-    mapping(address => uint256[])        private _holderProducts;
-    // Partner authorization: sender => authorized partner => bool
-    mapping(address => mapping(address => bool)) public authorizedPartners;
+    mapping(address => uint256[])        private _holderProducts;    // every product the address has ever held
+    mapping(address => uint256[])        private _shipmentsTo;       // every product ever shipped to the address
+    mapping(address => mapping(uint256 => bool)) private _heldIndexed;
+    mapping(address => mapping(uint256 => bool)) private _shipIndexed;
 
     event ProductCreated(uint256 indexed id, address indexed manufacturer, string name);
     event ProductShipped(uint256 indexed id, address indexed from, address indexed to);
@@ -64,14 +58,13 @@ contract ProductTransfer is ERC721 {
     event ProductCancelled(uint256 indexed id, address indexed holder);
     event ProductReclaimed(uint256 indexed id, address indexed from, address indexed to);
     event ProductForceRecalled(uint256 indexed id, address indexed by, address indexed from);
-        event PartnerAuthorized(address indexed sender, address indexed partner);
-        event PartnerRevoked(address indexed sender, address indexed partner);
 
-    constructor(address _credRegistry, address _didRegistry)
+    constructor(address _credRegistry, address _didRegistry, address _auditLog)
         ERC721("Supply Chain Product", "SCP")
     {
-        credRegistry = ICredentialRegistry(_credRegistry);
-        didRegistry  = IDIDRegistry(_didRegistry);
+        credRegistry = CredentialRegistry(_credRegistry);
+        didRegistry  = DIDRegistry(_didRegistry);
+        auditLog     = AuditLog(_auditLog);
     }
 
     modifier onlyCredentialed() {
@@ -79,265 +72,178 @@ contract ProductTransfer is ERC721 {
         _;
     }
 
-    modifier onlyHolder(uint256 productId) {
-        require(products[productId].currentHolder == msg.sender, "ProductTransfer: not current holder");
-        _;
-    }
-
     modifier productExists(uint256 productId) {
-        require(products[productId].id != 0, "ProductTransfer: product not found");
+        require(_products[productId].id != 0, "ProductTransfer: product not found");
         _;
     }
 
-    function createProduct(string calldata name, string calldata ipfsCID, uint256 quantity, string calldata description, string calldata batchNumber)
-        external onlyCredentialed returns (uint256)
-    {
-        IDIDRegistry.DIDDocument memory doc = didRegistry.getDID(msg.sender);
-        require(doc.active, "ProductTransfer: sender DID not active");
-        require(
-            keccak256(bytes(doc.role)) == keccak256(bytes("Manufacturer")),
-            "ProductTransfer: only Manufacturers can create products"
-        );
+    // ── Create ──────────────────────────────────────────────────────────────
+    function createProduct(
+        string calldata name, string calldata ipfsCID, uint256 quantity,
+        string calldata description, string calldata batchNumber
+    ) external onlyCredentialed returns (uint256 id) {
+        require(didRegistry.hasRole(msg.sender, "Manufacturer"), "ProductTransfer: only Manufacturers can create products");
+        require(bytes(name).length > 0, "ProductTransfer: name required");
+        require(quantity > 0, "ProductTransfer: quantity must be at least 1");
 
-        uint256 id = _nextId++;
-        products[id] = Product({
-            id:               id,
-            name:             name,
-            ipfsCID:          ipfsCID,
-            manufacturer:     msg.sender,
-            currentHolder:    msg.sender,
-            pendingRecipient: address(0),
-            status:           Status.InStock,
-            createdAt:        block.timestamp,
-                quantity:         quantity,
-                description:      description,
-                batchNumber:      batchNumber
+        id = _nextId++;
+        _products[id] = Product({
+            id: id, name: name, ipfsCID: ipfsCID, manufacturer: msg.sender,
+            currentHolder: msg.sender, pendingRecipient: address(0), status: Status.InStock,
+            createdAt: block.timestamp, quantity: quantity, description: description, batchNumber: batchNumber
         });
-
         _manufacturerProducts[msg.sender].push(id);
-        _holderProducts[msg.sender].push(id);
+        _indexHolder(msg.sender, id);
         _mint(msg.sender, id);
 
+        _log("PRODUCT_CREATED", id, name);
         emit ProductCreated(id, msg.sender, name);
-        return id;
     }
 
-    function shipTo(uint256 productId, address recipient)
-        external onlyCredentialed onlyHolder(productId) productExists(productId)
-    {
-        Product storage p = products[productId];
+    // ── Ship / confirm / cancel ─────────────────────────────────────────────
+    function shipTo(uint256 productId, address recipient) external onlyCredentialed productExists(productId) {
+        Product storage p = _products[productId];
+        require(p.currentHolder == msg.sender, "ProductTransfer: not current holder");
         require(p.status == Status.InStock, "ProductTransfer: product not in stock");
-        require(recipient != address(0),    "ProductTransfer: invalid recipient");
-        require(recipient != msg.sender,    "ProductTransfer: cannot ship to yourself");
-        require(credRegistry.isCredentialValid(recipient), "ProductTransfer: recipient has no valid credential");
-        require(authorizedPartners[msg.sender][recipient], "ProductTransfer: recipient not authorized by sender");
+        require(recipient != msg.sender, "ProductTransfer: cannot ship to yourself");
+        require(credRegistry.licensedBy(recipient) == msg.sender, "ProductTransfer: recipient is not licensed by you");
 
         p.status           = Status.InTransit;
         p.pendingRecipient = recipient;
+        _history[productId].push(TransferRecord(msg.sender, recipient, block.timestamp, false, false));
+        if (!_shipIndexed[recipient][productId]) { _shipIndexed[recipient][productId] = true; _shipmentsTo[recipient].push(productId); }
 
-        transferHistory[productId].push(TransferRecord({
-            from:      msg.sender,
-            to:        recipient,
-            timestamp: block.timestamp,
-            confirmed: false,
-            cancelled: false
-        }));
-
+        _log("PRODUCT_SHIPPED", productId, string.concat("to=", Strings.toHexString(recipient)));
         emit ProductShipped(productId, msg.sender, recipient);
     }
 
-    function confirmReceipt(uint256 productId)
-        external onlyCredentialed productExists(productId)
-    {
-        Product storage p = products[productId];
-        require(p.status == Status.InTransit,    "ProductTransfer: not in transit");
+    function confirmReceipt(uint256 productId) external onlyCredentialed productExists(productId) {
+        Product storage p = _products[productId];
+        require(p.status == Status.InTransit, "ProductTransfer: not in transit");
         require(p.pendingRecipient == msg.sender, "ProductTransfer: not the pending recipient");
 
-        uint256 len = transferHistory[productId].length;
-        require(len > 0, "ProductTransfer: no transfer record found");
-        transferHistory[productId][len - 1].confirmed = true;
-
-        address prevHolder = p.currentHolder;
+        _history[productId][_history[productId].length - 1].confirmed = true;
+        address prev = p.currentHolder;
         p.currentHolder    = msg.sender;
         p.pendingRecipient = address(0);
+        _indexHolder(msg.sender, productId);
 
-        _holderProducts[msg.sender].push(productId);
-
-        IDIDRegistry.DIDDocument memory doc = didRegistry.getDID(msg.sender);
-        if (keccak256(bytes(doc.role)) == keccak256(bytes("Retailer"))) {
+        if (didRegistry.hasRole(msg.sender, "Retailer")) {
             p.status = Status.Delivered;
             emit ProductDelivered(productId, msg.sender);
         } else {
             p.status = Status.InStock;
         }
+        _transfer(prev, msg.sender, productId);
 
-        _transfer(prevHolder, msg.sender, productId);
+        _log("PRODUCT_RECEIVED", productId, "");
         emit ProductReceived(productId, msg.sender);
     }
 
-    function cancelShipment(uint256 productId)
-        external onlyCredentialed onlyHolder(productId) productExists(productId)
-    {
-        Product storage p = products[productId];
+    /// @notice Sender cancels a shipment that has not been confirmed yet.
+    function cancelShipment(uint256 productId) external productExists(productId) {
+        Product storage p = _products[productId];
+        require(p.currentHolder == msg.sender, "ProductTransfer: not current holder");
         require(p.status == Status.InTransit, "ProductTransfer: not in transit");
         address recipient = p.pendingRecipient;
-        uint256 len = transferHistory[productId].length;
-        if (len > 0) transferHistory[productId][len - 1].cancelled = true;
-
+        _history[productId][_history[productId].length - 1].cancelled = true;
         p.status           = Status.InStock;
         p.pendingRecipient = address(0);
 
+        _log("SHIPMENT_CANCELLED", productId, "");
         emit ShipmentCancelled(productId, msg.sender, recipient);
     }
 
-    // ─── Force Recall ────────────────────────────────────────────────────────
-    // MF: can recall their product from DT or RT at any time, no conditions.
-    // DT: can recall from RT. DT must be
-    //     the last sender.
-    // Works whether the product is InStock, InTransit, or Delivered.
-    // ─────────────────────────────────────────────────────────────────────────
-    function forceRecall(uint256 productId)
-        external onlyCredentialed productExists(productId)
-    {
-        Product storage p = products[productId];
+    // ── Recall / reclaim ────────────────────────────────────────────────────
+    /// @notice Manufacturer can pull its own product back from anyone downstream.
+    ///         Distributor can pull a product back from a Retailer it shipped to.
+    function forceRecall(uint256 productId) external onlyCredentialed productExists(productId) {
+        Product storage p = _products[productId];
         require(p.status != Status.Cancelled, "ProductTransfer: product is cancelled");
-
         address prevHolder = p.currentHolder;
-        require(prevHolder != msg.sender, "ProductTransfer: already in your possession");
+        require(prevHolder != msg.sender || p.status == Status.InTransit, "ProductTransfer: already in your possession");
 
-        IDIDRegistry.DIDDocument memory callerDoc = didRegistry.getDID(msg.sender);
-        bool callerIsMF = keccak256(bytes(callerDoc.role)) == keccak256(bytes("Manufacturer"));
-        bool callerIsDT = keccak256(bytes(callerDoc.role)) == keccak256(bytes("Distributor"));
-
-        require(callerIsMF || callerIsDT, "ProductTransfer: not authorized to force recall");
-
-        if (callerIsMF) {
-            // MF must be this product's manufacturer
+        if (didRegistry.hasRole(msg.sender, "Manufacturer")) {
             require(p.manufacturer == msg.sender, "ProductTransfer: not the manufacturer of this product");
-            // No credential check on holder — MF has unconditional authority
+        } else if (didRegistry.hasRole(msg.sender, "Distributor")) {
+            require(didRegistry.hasRole(prevHolder, "Retailer"), "ProductTransfer: Distributors can only recall from Retailers");
+            TransferRecord[] storage h = _history[productId];
+            require(h.length > 0 && h[h.length - 1].from == msg.sender, "ProductTransfer: you did not ship this product to the Retailer");
+        } else {
+            revert("ProductTransfer: not authorized to force recall");
         }
 
-        if (callerIsDT) {
-            // DT can only recall from RT
-            IDIDRegistry.DIDDocument memory holderDoc = didRegistry.getDID(prevHolder);
-            require(
-                keccak256(bytes(holderDoc.role)) == keccak256(bytes("Retailer")),
-                "ProductTransfer: DT can only recall from RT"
-            );
-            // DT must have been the last sender
-            uint256 histLen = transferHistory[productId].length;
-            require(histLen > 0, "ProductTransfer: no transfer history");
-            require(
-                transferHistory[productId][histLen - 1].from == msg.sender,
-                "ProductTransfer: not the last sender of this product"
-            );
-        }
-        // If in-transit, mark the pending transfer as cancelled
         if (p.status == Status.InTransit) {
-            uint256 len = transferHistory[productId].length;
-            if (len > 0) transferHistory[productId][len - 1].cancelled = true;
+            _history[productId][_history[productId].length - 1].cancelled = true;
             p.pendingRecipient = address(0);
         }
-
-        // Transfer ownership back to caller
         p.currentHolder = msg.sender;
         p.status        = Status.InStock;
-        _holderProducts[msg.sender].push(productId);
-        _transfer(prevHolder, msg.sender, productId);
+        _indexHolder(msg.sender, productId);
+        if (prevHolder != msg.sender) _transfer(prevHolder, msg.sender, productId);
 
+        _log("PRODUCT_FORCE_RECALLED", productId, string.concat("from=", Strings.toHexString(prevHolder)));
         emit ProductForceRecalled(productId, msg.sender, prevHolder);
     }
 
-    // ─── Reclaim (permissionless — anyone triggers when holder cred revoked) ─
+    /// @notice Permissionless: once a holder's licence is no longer valid, anyone can
+    ///         move the product back upstream (or cancel it if the Manufacturer lost its licence).
     function reclaimProduct(uint256 productId) external productExists(productId) {
-        Product storage p = products[productId];
+        Product storage p = _products[productId];
         address holder = p.currentHolder;
-
-        require(!credRegistry.isCredentialValid(holder), "ProductTransfer: holder credential still valid");
         require(p.status != Status.Cancelled, "ProductTransfer: product already cancelled");
+        require(!credRegistry.isCredentialValid(holder), "ProductTransfer: holder credential still valid");
 
-        IDIDRegistry.DIDDocument memory holderDoc = didRegistry.getDID(holder);
-
-        if (keccak256(bytes(holderDoc.role)) == keccak256(bytes("Manufacturer"))) {
-            p.status        = Status.Cancelled;
-            p.currentHolder = address(0);
+        if (holder == p.manufacturer) {
+            p.status           = Status.Cancelled;
+            p.currentHolder    = address(0);
+            p.pendingRecipient = address(0);
             _burn(productId);
+            _log("PRODUCT_CANCELLED", productId, "");
             emit ProductCancelled(productId, holder);
-
-        } else if (keccak256(bytes(holderDoc.role)) == keccak256(bytes("Distributor"))) {
-            address mf = p.manufacturer;
-            require(credRegistry.isCredentialValid(mf), "ProductTransfer: manufacturer credential also invalid");
-            p.currentHolder    = mf;
-            p.pendingRecipient = address(0);
-            p.status           = Status.InStock;
-            _transfer(holder, mf, productId);
-            _holderProducts[mf].push(productId);
-            emit ProductReclaimed(productId, holder, mf);
-
-        } else if (keccak256(bytes(holderDoc.role)) == keccak256(bytes("Retailer"))) {
-            TransferRecord[] storage history = transferHistory[productId];
-            require(history.length > 0, "ProductTransfer: no transfer history");
-            address prevSender = history[history.length - 1].from;
-            require(credRegistry.isCredentialValid(prevSender), "ProductTransfer: previous sender credential also invalid");
-            p.currentHolder    = prevSender;
-            p.pendingRecipient = address(0);
-            p.status           = Status.InStock;
-            _transfer(holder, prevSender, productId);
-            _holderProducts[prevSender].push(productId);
-            emit ProductReclaimed(productId, holder, prevSender);
-
-        } else {
-            revert("ProductTransfer: unrecognized role for reclaim");
-        }
-    }
-
-
-        function authorizePartner(address partner) external onlyCredentialed {
-            IDIDRegistry.DIDDocument memory callerDoc = didRegistry.getDID(msg.sender);
-            IDIDRegistry.DIDDocument memory partnerDoc = didRegistry.getDID(partner);
-            if (keccak256(bytes(callerDoc.role)) == keccak256(bytes("Manufacturer"))) {
-                require(
-                    keccak256(bytes(partnerDoc.role)) == keccak256(bytes("Distributor")),
-                    "ProductTransfer: MF can only authorize DT"
-                );
-            } else if (keccak256(bytes(callerDoc.role)) == keccak256(bytes("Distributor"))) {
-                require(
-                    keccak256(bytes(partnerDoc.role)) == keccak256(bytes("Retailer")),
-                    "ProductTransfer: DT can only authorize RT"
-                );
-            } else {
-                revert("ProductTransfer: only MF or DT can authorize partners");
-            }
-            authorizedPartners[msg.sender][partner] = true;
-            emit PartnerAuthorized(msg.sender, partner);
+            return;
         }
 
-        function revokePartner(address partner) external {
-            authorizedPartners[msg.sender][partner] = false;
-            emit PartnerRevoked(msg.sender, partner);
-        }
+        TransferRecord[] storage h = _history[productId];
+        address target = h[h.length - 1].confirmed ? h[h.length - 1].from : p.manufacturer;
+        if (!credRegistry.isCredentialValid(target)) target = p.manufacturer;
+        require(credRegistry.isCredentialValid(target), "ProductTransfer: no upstream party with a valid credential");
 
-    function getProduct(uint256 productId) external view productExists(productId) returns (Product memory) {
-        return products[productId];
+        p.currentHolder    = target;
+        p.pendingRecipient = address(0);
+        p.status           = Status.InStock;
+        _indexHolder(target, productId);
+        _transfer(holder, target, productId);
+        _log("PRODUCT_RECLAIMED", productId, string.concat("to=", Strings.toHexString(target)));
+        emit ProductReclaimed(productId, holder, target);
     }
 
-    function getTransferHistory(uint256 productId) external view productExists(productId) returns (TransferRecord[] memory) {
-        return transferHistory[productId];
+    // ── Views ───────────────────────────────────────────────────────────────
+    function getProduct(uint256 productId) external view productExists(productId) returns (Product memory) { return _products[productId]; }
+    function getTransferHistory(uint256 productId) external view productExists(productId) returns (TransferRecord[] memory) { return _history[productId]; }
+    function getTransferCount(uint256 productId) external view returns (uint256) { return _history[productId].length; }
+    function totalProducts() external view returns (uint256) { return _nextId - 1; }
+    function getManufacturerProducts(address manufacturer) external view returns (uint256[] memory) { return _manufacturerProducts[manufacturer]; }
+    function getHolderProducts(address holder) external view returns (uint256[] memory) { return _holderProducts[holder]; }
+    function getShipmentsTo(address recipient) external view returns (uint256[] memory) { return _shipmentsTo[recipient]; }
+
+    function getProducts(uint256[] calldata ids) external view returns (Product[] memory out) {
+        out = new Product[](ids.length);
+        for (uint256 i = 0; i < ids.length; i++) out[i] = _products[ids[i]];
     }
 
-    function getTransferCount(uint256 productId) external view returns (uint256) {
-        return transferHistory[productId].length;
+    // ── Internal ────────────────────────────────────────────────────────────
+    function _indexHolder(address who, uint256 id) internal {
+        if (!_heldIndexed[who][id]) { _heldIndexed[who][id] = true; _holderProducts[who].push(id); }
     }
 
-    function totalProducts() external view returns (uint256) {
-        return _nextId - 1;
+    function _log(string memory action, uint256 id, string memory extra) internal {
+        auditLog.logAction(msg.sender, action, string.concat("productId=", Strings.toString(id), bytes(extra).length > 0 ? " " : "", extra));
     }
 
-    function getManufacturerProducts(address manufacturer) external view returns (uint256[] memory) {
-        return _manufacturerProducts[manufacturer];
-    }
-
-    function getHolderProducts(address holder) external view returns (uint256[] memory) {
-        return _holderProducts[holder];
+    /// Products move only through shipTo/confirmReceipt — block direct ERC-721 transfers.
+    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
+        require(auth == address(0), "ProductTransfer: use shipTo / confirmReceipt");
+        return super._update(to, tokenId, auth);
     }
 }

@@ -1,91 +1,93 @@
-import { useState } from "react";
-import { ethers } from "ethers";
-import { getContract } from "../contracts";
+import { useState } from 'react'
+import { loadProducts, reader } from '../lib/chain'
+import { useDirectory, useLoad, useSession, useTx } from '../lib/app'
+import { sameAddr } from '../lib/format'
+import { Alert, Button, Card, Empty, Loading, Stat, Tabs } from '../components/ui'
+import { PageHead } from '../components/Layout'
+import { LicenceBanner, LicencePanel, useActiveLicensees, useStanding } from '../components/Licences'
+import { ProductLookup } from '../components/Products'
+import { EmailSettings } from '../components/EmailSettings'
+import { FilterChips, IncomingList, ProductItem, ShipForm, useIncoming, useProductModals } from '../components/ProductList'
 
-export default function Distributor({ signer }) {
-  const [claimProductId, setClaimProductId] = useState("");
-  const [claimSecret, setClaimSecret] = useState("");
-  const [commitProductId, setCommitProductId] = useState("");
-  const [recipient, setRecipient] = useState("");
-  const [secret, setSecret] = useState("");
-  const [transferCredId, setTransferCredId] = useState("");
-  const [rtHolder, setRtHolder] = useState("");
-  const [status, setStatus] = useState("");
+export default function Distributor() {
+  const s = useSession()
+  const d = useDirectory()
+  const standing = useStanding()
+  const partners = useActiveLicensees()
+  const incoming = useIncoming()
+  const { run, busy } = useTx()
+  const { buttons, modals } = useProductModals()
+  const [tab, setTab] = useState('incoming')
+  const [filter, setFilter] = useState('all')
 
-  const s = {
-    card: {border:"1px solid #e5e7eb",borderRadius:10,padding:20,background:"#fff",marginBottom:16},
-    inp: {width:"100%",padding:"9px 12px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:14,boxSizing:"border-box"},
-    lbl: {display:"block",fontSize:13,color:"#6b7280",marginBottom:4,marginTop:12},
-    btn: (bg) => ({marginTop:14,padding:"10px 18px",background:bg,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}),
-  };
-
-  async function issueLicense() {
-    if (!signer || !rtHolder) return setStatus("❌ Connect wallet and enter address");
-    try {
-      setStatus("⏳ Issuing TradeLicense...");
-      const cred = getContract("CredentialRegistry", signer);
-      const tx = await cred.issueCredential(rtHolder, "TradeLicense", 180);
-      await tx.wait();
-      setStatus(`✅ TradeLicense issued to ${rtHolder.slice(0,6)}...`);
-      setRtHolder("");
-    } catch (err) { setStatus("❌ " + err.message.split("(")[0]); }
+  const held = useLoad(async () => loadProducts(await reader().pt.getHolderProducts(s.address)), [s.address])
+  const list = held.data || []
+  const mine = p => sameAddr(p.holder, s.address)
+  const groups = {
+    stock: list.filter(p => mine(p) && p.status === 0),
+    transit: list.filter(p => mine(p) && p.status === 1),
+    retail: list.filter(p => !mine(p) && p.status === 2 && d.get(p.holder)?.role === 'Retailer'),
   }
+  groups.all = [...groups.stock, ...groups.transit, ...groups.retail]
+  const shown = groups[filter]
 
-  async function claimTransfer() {
-    if (!signer || !claimProductId || !claimSecret) return setStatus("❌ Fill in product ID and secret");
-    try {
-      setStatus("⏳ Claiming transfer...");
-      const pt = getContract("ProductTransfer", signer);
-      const tx = await pt.claimTransfer(BigInt(claimProductId), claimSecret);
-      await tx.wait();
-      setStatus(`✅ Product #${claimProductId} claimed!`);
-      setClaimProductId(""); setClaimSecret("");
-    } catch (err) { setStatus("❌ " + err.message.split("(")[0]); }
-  }
-
-  async function commitTransfer() {
-    if (!signer || !commitProductId || !secret || !recipient || !transferCredId)
-      return setStatus("❌ Fill in all fields");
-    try {
-      setStatus("⏳ Committing transfer...");
-      const pt = getContract("ProductTransfer", signer);
-      const secretHash = ethers.keccak256(ethers.toUtf8Bytes(secret));
-      const tx = await pt.commitTransfer(BigInt(commitProductId), secretHash, recipient, transferCredId);
-      await tx.wait();
-      setStatus(`✅ Transfer committed! Share secret "${secret}" with retailer.`);
-    } catch (err) { setStatus("❌ " + err.message.split("(")[0]); }
-  }
+  const reloadAll = async () => { await Promise.all([held.reload(), incoming.reload()]) }
+  const cancel = p => run('cancel:' + p.id, () => s.write.pt.cancelShipment(p.id), { success: 'Shipment cancelled — product is back in stock.', onDone: held.reload })
+  const recall = p => run('recall:' + p.id, () => s.write.pt.forceRecall(p.id), { success: `“${p.name}” recalled from ${d.name(p.holder)}.`, onDone: held.reload })
 
   return (
-    <div>
-      <h2>🚚 Distributor</h2>
-      <div style={s.card}>
-        <h3>Issue TradeLicense to Retailer</h3>
-        <label style={s.lbl}>Retailer Address</label>
-        <input style={s.inp} value={rtHolder} onChange={e=>setRtHolder(e.target.value)} placeholder="0x..." />
-        <button onClick={issueLicense} style={s.btn("#1a56db")}>Issue License</button>
+    <div className="page">
+      <PageHead session={s} title={s.company} />
+      <div style={{ marginBottom: 20 }}><LicenceBanner standing={standing} /></div>
+
+      <div className="grid grid-stats" style={{ marginBottom: 20 }}>
+        <Stat label="Incoming" value={incoming.data?.length ?? '…'} hint="awaiting your confirmation" />
+        <Stat label="In stock" value={groups.stock.length} />
+        <Stat label="In transit" value={groups.transit.length} />
+        <Stat label="At retailers" value={groups.retail.length} />
+        <Stat label="Active retailers" value={partners.data?.length ?? '…'} />
       </div>
-      <div style={s.card}>
-        <h3>Claim Transfer from Manufacturer</h3>
-        <label style={s.lbl}>Product ID</label>
-        <input style={s.inp} value={claimProductId} onChange={e=>setClaimProductId(e.target.value)} placeholder="e.g. 1" />
-        <label style={s.lbl}>Secret (from manufacturer)</label>
-        <input style={s.inp} value={claimSecret} onChange={e=>setClaimSecret(e.target.value)} placeholder="HANDSHAKE_..." />
-        <button onClick={claimTransfer} style={s.btn("#1a56db")}>Claim Transfer</button>
-      </div>
-      <div style={s.card}>
-        <h3>Commit Transfer to Retailer</h3>
-        <label style={s.lbl}>Product ID</label>
-        <input style={s.inp} value={commitProductId} onChange={e=>setCommitProductId(e.target.value)} placeholder="e.g. 1" />
-        <label style={s.lbl}>Retailer Address</label>
-        <input style={s.inp} value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x..." />
-        <label style={s.lbl}>Secret (share with retailer)</label>
-        <input style={s.inp} value={secret} onChange={e=>setSecret(e.target.value)} placeholder="HANDSHAKE_..." />
-        <label style={s.lbl}>Retailer Credential ID</label>
-        <input style={s.inp} value={transferCredId} onChange={e=>setTransferCredId(e.target.value)} placeholder="0x..." />
-        <button onClick={commitTransfer} style={s.btn("#1a56db")}>Commit Transfer</button>
-      </div>
-      {status && <p style={{marginTop:12,fontWeight:500}}>{status}</p>}
+
+      <Tabs value={tab} onChange={setTab} tabs={[
+        { id: 'incoming', label: 'Incoming', icon: '📬', count: incoming.data?.length },
+        { id: 'inventory', label: 'Inventory', icon: '📦', count: groups.all.length },
+        { id: 'partners', label: 'Retailers', icon: '🏪', count: partners.data?.length },
+        { id: 'lookup', label: 'Product lookup', icon: '🔍' },
+        { id: 'email', label: 'Notifications', icon: '📧' },
+      ]} />
+
+      {tab === 'incoming' && (
+        <Card title="Incoming shipments" subtitle="Products your Manufacturer shipped to you. Accept to take custody." actions={<Button variant="ghost" size="sm" onClick={incoming.reload}>↻ Refresh</Button>}>
+          <IncomingList incoming={incoming} onAccepted={reloadAll} emptyText="Shipments from your Manufacturer will appear here." />
+        </Card>
+      )}
+
+      {tab === 'inventory' && (
+        <Card title="Inventory" actions={<Button variant="ghost" size="sm" onClick={() => { held.reload(); partners.reload() }}>↻ Refresh</Button>}>
+          <div style={{ marginBottom: 14 }}>
+            <FilterChips value={filter} onChange={setFilter} options={[
+              ['all', 'All', groups.all.length], ['stock', 'In stock', groups.stock.length], ['transit', 'In transit', groups.transit.length], ['retail', 'At retailers', groups.retail.length],
+            ]} />
+          </div>
+          {held.loading ? <Loading /> : held.error ? <Alert type="error">{held.error}</Alert>
+            : !shown.length ? <Empty icon="📦" title="Nothing here yet">Accepted shipments appear in your inventory.</Empty>
+            : shown.map(p => (
+              <ProductItem key={p.id} p={p}
+                actions={<>
+                  {buttons(p)}
+                  {p.status === 1 && mine(p) && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'cancel:' + p.id} onClick={() => cancel(p)}>Cancel shipment</Button>}
+                  {p.status === 2 && !mine(p) && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'recall:' + p.id} onClick={() => recall(p)}>Force recall</Button>}
+                </>}
+                foot={p.status === 0 && mine(p) && <ShipForm product={p} partners={partners.data || []} partnerLabel="Retailer" onShipped={held.reload} />}
+              />
+            ))}
+        </Card>
+      )}
+
+      {tab === 'partners' && <LicencePanel standing={standing} onChange={partners.reload} />}
+      {tab === 'lookup' && <ProductLookup />}
+      {tab === 'email' && <EmailSettings address={s.address} signer={s.signer} />}
+      {modals}
     </div>
-  );
+  )
 }

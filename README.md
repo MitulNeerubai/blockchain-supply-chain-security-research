@@ -1,139 +1,114 @@
-# Blockchain Supply Chain Security - SSI Prototype
+# DIDLab Supply Chain — SSI Traceability Prototype
 
-A Self-Sovereign Identity (SSI) based supply chain traceability system built on Hyperledger Besu. Implements the Trusted Traceability Service (TTS) framework with a full React UI, on-chain credential enforcement, and an immutable audit trail.
+A Self-Sovereign Identity (SSI) supply-chain traceability system on Hyperledger Besu. Companies hold an on-chain DID with a unique company name, receive licences down a chain of trust, and move products (ERC-721 tokens) only to partners they licensed. Anyone can verify a product's chain of custody by scanning its QR code.
 
-> Research prototype developed at **DIDLab - Digital Identity and Distributed Ledger Laboratory, UMKC**  
-> Supervisor: Dr. A S M Touhidul Hasan
-
----
-
-## Overview
-
-This system allows a multi-actor supply chain (Root Governance Authority → Local Government → Manufacturer → Distributor → Retailer) to track products end-to-end on a permissioned blockchain. Every transfer is enforced by smart contracts - only credentialed, DID-registered actors can participate.
+> Research prototype — **DIDLab, Digital Identity and Distributed Ledger Laboratory, UMKC**
+> Supervisor: Dr. A S M Touhidul Hasan · Live: https://mitul.didlab.org
 
 ---
 
-## Architecture
+## Chain of trust
 
-### Actors
-| Role | Responsibility |
-|------|---------------|
-| **RootGA** | Authorizes Local Governments as trusted credential issuers |
-| **Local Government** | Issues Manufacturing Licenses and Trade Licenses |
-| **Manufacturer** | Creates products, ships to Distributors |
-| **Distributor** | Claims custody, forwards to Retailers |
-| **Retailer** | Claims final custody, verifies full chain |
+```
+rootGA (deployer)
+  └─ grants LG licence ─────────────▶ Local Government
+                                         └─ Manufacturing License ─▶ Manufacturer
+                                                                       └─ Trade License ─▶ Distributor
+                                                                                            └─ Trade License ─▶ Retailer
+```
 
-### Smart Contracts
-| Contract | Address | Purpose |
-|----------|---------|---------|
-| `TrustRegistry` | `0x2e4511...` | Root of trust - authorized issuers |
-| `DIDRegistry` | `0x98F494...` | Decentralized Identifiers for all actors |
-| `CredentialRegistry` | `0x841fa7...` | On-chain verifiable credentials |
-| `ProductTransfer` | `0x4c4c26...` | Product creation, custody transfers, secret-hash claim |
-| `AuditLog` | `0x4EE60A...` | Immutable event log for all actions |
+| Role | Registers as | Licensed by | Can license | Products |
+|---|---|---|---|---|
+| **rootGA** | — (deployer wallet) | — | Local Governments | — |
+| **Local Government** | `LocalGovt` | rootGA | Manufacturers | — |
+| **Manufacturer** | `Manufacturer` | Local Government | Distributors | create, ship to *its* Distributors, recall |
+| **Distributor** | `Distributor` | Manufacturer | Retailers | accept, ship to *its* Retailers, recall from them |
+| **Retailer** | `Retailer` | Distributor | — | accept, verify chain, share QR |
 
-### Network
-- **Chain:** Hyperledger Besu (QBFT)
-- **Chain ID:** 252501
-- **RPC:** `https://eth.didlab.org`
-- **Explorer:** `https://explorer.didlab.org`
+Rules enforced **on-chain**:
 
----
+- **Unique company names** — stored in the DID, case-insensitive (`Acme` = `ACME`).
+- **Role-locked licensing** — each role can only license the next role down; the licence type follows from the holder's role.
+- **One live licence per wallet** — a new licence supersedes the old one.
+- **Cascading revocation** — a licence is only valid while its issuer is still trusted. Revoking an LG suspends its Manufacturers, their Distributors and their Retailers; re-granting restores them.
+- **Licensed handoffs** — `shipTo` only accepts a recipient whose live licence *you* issued. Every handoff is two-step (ship → recipient confirms).
+- **No side-door transfers** — direct ERC-721 `transferFrom` is blocked.
 
-## Key Features
+## Contracts (`contracts/`)
 
-- **SSI-based access control** - actors register DIDs and hold verifiable credentials before they can participate
-- **Commit-reveal transfers** - products are shipped with a secret hash; recipient claims by revealing the plaintext secret
-- **Full audit trail** - every action (authorize, register, issue, create, ship, claim) is logged on-chain with timestamps
-- **Chain verification** - Retailer can verify the entire custody chain: roles, credentials, transfer sequence, and DID status at every hop
-- **Smart contract enforcement** - unauthorized actors are blocked at the contract level, not just the UI
+| Contract | Purpose |
+|---|---|
+| `TrustRegistry` | rootGA grants / revokes LG licences |
+| `DIDRegistry` | `registerDID(role, companyName)`, unique names, full directory (`getAllDIDs`) |
+| `CredentialRegistry` | `issueCredential(holder, expiresAt)`, revoke, cascading validity, `licensedBy(holder)` |
+| `ProductTransfer` | ERC-721 products: create, ship, confirm, cancel, force-recall, reclaim |
+| `TraceabilityAudit` | Read-only MF → DT → RT chain verification |
+| `AuditLog` | Append-only on-chain log written by the other contracts |
 
----
+## Project layout
 
-## Tech Stack
+```
+contracts/            Solidity sources
+test/                 Hardhat tests (npm test)
+deploy_all.cjs        Deploys all 6 contracts, writes src/deployment.json (addresses + ABIs)
+src/                  React app (Vite)
+  lib/                chain access, formatting, email API, React contexts
+  components/         UI kit, licence panel, product list, timeline, QR
+  pages/              Connect, Register, RootGA, LocalGovt, Manufacturer, Distributor, Retailer, Verify
+server.js             Email-OTP API (/api/*) + static server for dist/
+notifier.js           Emails participants on chain events
+```
 
-- **Solidity 0.8.24** - smart contracts
-- **Hardhat v2.22.15** - development and deployment
-- **Ethers.js v6** - blockchain interaction
-- **React** - frontend UI
-- **MetaMask** - wallet integration
-- **Hyperledger Besu** - permissioned EVM network
+## Setup
 
----
+> **Step-by-step deployment guide: [DEPLOY.md](DEPLOY.md)**
 
-## Getting Started
-
-### Prerequisites
-- Node.js v18+
-- MetaMask browser extension
-- Add DIDLab network to MetaMask:
-  - Network name: DIDLab
-  - RPC URL: `https://eth.didlab.org`
-  - Chain ID: `252501`
-  - Currency: `TRUST`
-
-### Install & Run
 ```bash
-git clone https://github.com/MitulNeerubai/blockchain-supply-chain-security-research.git
-cd blockchain-supply-chain-security-research
 npm install
-npm run dev
+cp .env.example .env      # set PRIVATE_KEY_ROOTGA, GMAIL_USER, GMAIL_PASS
+npm test                  # contract tests
 ```
 
-### Deploy Contracts
+MetaMask network: name `besu`, RPC `https://eth.didlab.org`, chain ID `252501`, currency `TRUST` (the app offers to add it automatically).
+
+## Deploy (every time a contract changes)
+
 ```bash
-cd contracts
-npx hardhat run scripts/deploy.js --network didlab
+npm run deploy:besu       # deploys all 6 contracts; deployer = rootGA; writes src/deployment.json
+npm run build             # builds the UI with the new addresses into dist/
 ```
 
----
+Then publish `dist/` to the web root, e.g. on the server:
 
-## How It Works
+```bash
+rm -f /srv/www/assets/index-*.js /srv/www/assets/index-*.css
+cp dist/index.html /srv/www/index.html
+cp dist/assets/* /srv/www/assets/
+```
 
-### 1. Setup (RootGA)
-RootGA authorizes a Local Government wallet as a trusted credential issuer via `TrustRegistry.authorizeIssuer()`.
+There is nothing to paste into `App.jsx` any more — addresses and ABIs come from `src/deployment.json`.
+A redeploy starts from an empty chain state: everyone registers again and licences are re-issued.
 
-### 2. Registration
-Each actor registers a DID with their role via `DIDRegistry.registerDID()`.
+## Local development
 
-### 3. Credentialing (Local Government)
-LG issues a `ManufacturingLicense` to the Manufacturer and `TradeLicense` to Distributors and Retailers via `CredentialRegistry.issueCredential()`.
+```bash
+npm run node:local        # terminal 1 — local chain (chain ID 1337)
+npm run deploy:local      # terminal 2
+npm run dev               # terminal 3 — http://localhost:5173
+npm run server            # optional — email OTP API on :3001
+```
 
-### 4. Product Creation (Manufacturer)
-MF calls `ProductTransfer.createProduct()`. Contract checks:
-- Caller has a valid `ManufacturingLicense`
-- Caller's DID is active
+## Email notifications
 
-### 5. Transfer (Commit-Reveal)
-MF calls `commitTransfer(productId, recipientAddress, secretHash)`. Contract checks:
-- Recipient has a valid `TradeLicense`
-- Recipient's DID is active
+`server.js` verifies a 6-digit code sent to the email **and** a MetaMask signature from the wallet, then stores `{ wallet → email }` in `emails.json`. `notifier.js` (`npm run notifier`) emails the right company when a shipment is sent, received, cancelled, recalled or reclaimed, and when licences are issued or revoked.
 
-Recipient calls `claimTransfer(productId, plainTextSecret)` to take custody.
+## Research context
 
-### 6. Chain Verification (Retailer)
-`TraceabilityAudit.auditProduct()` verifies the entire history:
-- Confirmed transfers exist (MF→DT, DT→RT)
-- Each holder had valid credentials
-- All DIDs were active
-- Roles match expected sequence
-
----
-
-## Research Context
-
-This prototype implements the **Trusted Traceability Service (TTS)** framework proposed in:
+Implements the **Trusted Traceability Service (TTS)** framework from:
 
 > Hasan, A. S. M. T., et al. *"Trusted Traceability Service: A Novel Approach to Securing Supply Chains."* Electronics, MDPI, 2025.
 
-The original paper demonstrated the TTS architecture on the Fantom public blockchain as a simulation. This project is the **first real-world prototype implementation** of the TTS framework on a permissioned Hyperledger Besu network, with a complete React UI and MetaMask integration.
-
----
-
 ## Author
 
-**Mitul Neerubai**  
-B.S. Computer Science, UMKC (May 2026)  
-Research Analyst - DIDLab, UMKC  
+**Mitul Neerubai** — B.S. Computer Science, UMKC · Research Analyst, DIDLab
 [github.com/MitulNeerubai](https://github.com/MitulNeerubai) · [linkedin.com/in/mitul-neerubai](https://linkedin.com/in/mitul-neerubai)

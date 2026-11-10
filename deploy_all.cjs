@@ -1,70 +1,79 @@
-const { ethers } = require("hardhat");
+// deploy_all.cjs — deploys all 6 contracts and writes src/deployment.json
+//
+//   npm run deploy:besu     (DIDLab Besu, uses PRIVATE_KEY_ROOTGA from .env)
+//   npm run deploy:local    (against `npx hardhat node`)
+//
+// The deployer wallet becomes rootGA. The frontend reads addresses + ABIs from
+// src/deployment.json, so there is nothing to paste into App.jsx any more.
+// Rebuild the UI afterwards: npm run build
+
+const fs = require("fs");
+const path = require("path");
+const hre = require("hardhat");
+const { ethers } = hre;
+
+const RPC_FOR = { besu: "https://eth.didlab.org", localhost: "http://127.0.0.1:8545", hardhat: "http://127.0.0.1:8545" };
 
 async function main() {
+  if (hre.network.name === "hardhat") {
+    console.warn("⚠️  Deploying to the throw-away in-process 'hardhat' network.");
+    console.warn("    Use `npm run deploy:besu` (or --network besu) for the real chain.\n");
+  }
   const [deployer] = await ethers.getSigners();
-  console.log("Deploying with:", deployer.address);
+  if (!deployer) throw new Error("No deployer account. Set PRIVATE_KEY_ROOTGA in .env");
+  const { chainId } = await ethers.provider.getNetwork();
+  console.log(`Network: ${hre.network.name} (chainId ${chainId})`);
+  console.log(`Deployer / rootGA: ${deployer.address}`);
+  console.log(`Balance: ${ethers.formatEther(await ethers.provider.getBalance(deployer))}\n`);
 
-  // 1. AuditLog
-  console.log("\n[1/5] Deploying AuditLog...");
-  const AL = await ethers.getContractFactory("AuditLog");
-  const al = await AL.deploy();
-  await al.waitForDeployment();
-  const alAddr = await al.getAddress();
-  console.log("✅ AuditLog:", alAddr);
+  const deploy = async (name, ...args) => {
+    const c = await (await ethers.getContractFactory(name)).deploy(...args);
+    await c.waitForDeployment();
+    const addr = await c.getAddress();
+    console.log(`✅ ${name.padEnd(19)} ${addr}`);
+    return { c, addr };
+  };
 
-  // 2. TrustRegistry
-  console.log("\n[2/5] Deploying TrustRegistry...");
-  const TR = await ethers.getContractFactory("TrustRegistry");
-  const tr = await TR.deploy();
-  await tr.waitForDeployment();
-  const trAddr = await tr.getAddress();
-  console.log("✅ TrustRegistry:", trAddr);
+  const audit = await deploy("AuditLog");
+  const trust = await deploy("TrustRegistry");
+  const did   = await deploy("DIDRegistry", trust.addr, audit.addr);
+  const cred  = await deploy("CredentialRegistry", trust.addr, did.addr, audit.addr);
+  const pt    = await deploy("ProductTransfer", cred.addr, did.addr, audit.addr);
+  const ta    = await deploy("TraceabilityAudit", pt.addr, cred.addr, did.addr);
 
-  // 3. DIDRegistry
-  console.log("\n[3/5] Deploying DIDRegistry...");
-  const DR = await ethers.getContractFactory("DIDRegistry");
-  const dr = await DR.deploy(trAddr, alAddr);
-  await dr.waitForDeployment();
-  const drAddr = await dr.getAddress();
-  console.log("✅ DIDRegistry:", drAddr);
+  console.log("\nRegistering contracts in AuditLog…");
+  for (const [x, label] of [[did, "DIDRegistry"], [cred, "CredentialRegistry"], [pt, "ProductTransfer"]]) {
+    await (await audit.c.registerContract(x.addr, label)).wait();
+  }
 
-  // 4. CredentialRegistry
-  console.log("\n[4/5] Deploying CredentialRegistry...");
-  const CR = await ethers.getContractFactory("CredentialRegistry");
-  const cr = await CR.deploy(trAddr, drAddr, alAddr);
-  await cr.waitForDeployment();
-  const crAddr = await cr.getAddress();
-  console.log("✅ CredentialRegistry:", crAddr);
+  const block = await ethers.provider.getBlockNumber();
+  const abi = name => hre.artifacts.readArtifactSync(name).abi;
+  const deployment = {
+    network: hre.network.name,
+    chainId: Number(chainId),
+    rpcUrl: process.env.PUBLIC_RPC || RPC_FOR[hre.network.name] || hre.network.config.url,
+    deployer: deployer.address,
+    deployedAt: new Date().toISOString(),
+    deployBlock: block,
+    contracts: {
+      audit:  { name: "AuditLog",           address: audit.addr, abi: abi("AuditLog") },
+      trust:  { name: "TrustRegistry",      address: trust.addr, abi: abi("TrustRegistry") },
+      did:    { name: "DIDRegistry",        address: did.addr,   abi: abi("DIDRegistry") },
+      cred:   { name: "CredentialRegistry", address: cred.addr,  abi: abi("CredentialRegistry") },
+      pt:     { name: "ProductTransfer",    address: pt.addr,    abi: abi("ProductTransfer") },
+      ta:     { name: "TraceabilityAudit",  address: ta.addr,    abi: abi("TraceabilityAudit") },
+    },
+  };
 
-  // 5. Register CredentialRegistry in AuditLog
-  console.log("\nRegistering contracts in AuditLog...");
-  await (await al.registerContract(drAddr, "DIDRegistry")).wait();
-  await (await al.registerContract(crAddr, "CredentialRegistry")).wait();
-  console.log("✅ Registered");
+  // Write next to the UI source (root src/ locally, supply-chain-ui/src/ on the server)
+  const targets = ["src", "supply-chain-ui/src"].map(d => path.join(__dirname, d)).filter(d => fs.existsSync(d));
+  fs.mkdirSync(path.join(__dirname, "deployments"), { recursive: true });
+  const json = JSON.stringify(deployment, null, 2);
+  for (const d of targets) fs.writeFileSync(path.join(d, "deployment.json"), json);
+  fs.writeFileSync(path.join(__dirname, "deployments", `${hre.network.name}.json`), json);
 
-  // 6. ProductTransfer
-  console.log("\n[5/5] Deploying ProductTransfer + TraceabilityAudit...");
-  const PT = await ethers.getContractFactory("ProductTransfer");
-  const pt = await PT.deploy(crAddr, drAddr);
-  await pt.waitForDeployment();
-  const ptAddr = await pt.getAddress();
-  console.log("✅ ProductTransfer:", ptAddr);
-
-  const TA = await ethers.getContractFactory("TraceabilityAudit");
-  const ta = await TA.deploy(ptAddr, crAddr, drAddr);
-  await ta.waitForDeployment();
-  const taAddr = await ta.getAddress();
-  console.log("✅ TraceabilityAudit:", taAddr);
-
-  console.log("\n══════════════════════════════════════════");
-  console.log("const ADDR = {");
-  console.log(`  trust: '${trAddr}',`);
-  console.log(`  did:   '${drAddr}',`);
-  console.log(`  cred:  '${crAddr}',`);
-  console.log(`  pt:    '${ptAddr}',`);
-  console.log(`  audit: '${taAddr}',`);
-  console.log("};");
-  console.log("══════════════════════════════════════════");
+  console.log("\nWrote deployment.json to:", [...targets, "deployments/"].map(p => path.relative(__dirname, p) || ".").join(", "));
+  console.log("Next: npm run build   (then copy dist/ to the web root)");
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch(err => { console.error(err); process.exit(1); });

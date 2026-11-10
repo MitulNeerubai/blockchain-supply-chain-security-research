@@ -3,12 +3,17 @@
   "chainId": 252501,
   "rpcUrl": "https://eth.didlab.org",
   "deployer": "0x71f15B6EC8fea94495B5608D2d48c73C060d488e",
-  "deployedAt": "2026-11-10T05:31:37.674Z",
-  "deployBlock": 7326538,
+  "deployedAt": "2026-11-10T16:56:56.741Z",
+  "deployBlock": 7347098,
   "contracts": {
+    "custody": {
+      "name": "Custody",
+      "address": "0xB67F73C1f0bd7F1C09a52E3082362BD771883145",
+      "abi": []
+    },
     "audit": {
       "name": "AuditLog",
-      "address": "0xdb8B05E9C1f691c1E3Ad6f544290Ee1bfDE49C3A",
+      "address": "0x38c24096e1AC10217ef73446118EC8d605a9070F",
       "abi": [
         {
           "inputs": [],
@@ -277,7 +282,7 @@
     },
     "trust": {
       "name": "TrustRegistry",
-      "address": "0x5f014609673A639247447c370283b2987d7F32c5",
+      "address": "0x1779EB3a74e421b8a7F5361Cecc8D001BC1Fd36a",
       "abi": [
         {
           "inputs": [],
@@ -516,7 +521,7 @@
     },
     "did": {
       "name": "DIDRegistry",
-      "address": "0x86F41FCe5B93514dc3a87980c87499fba52FEf3B",
+      "address": "0x8BC7cd961B9421f95b1db698D8411Ec7d4855C5a",
       "abi": [
         {
           "inputs": [
@@ -965,7 +970,7 @@
     },
     "cred": {
       "name": "CredentialRegistry",
-      "address": "0x38b4DC4bECCF61F464B924297d61b7743626bf1f",
+      "address": "0x895F74c0B513905b38ff1929d5C982d800176331",
       "abi": [
         {
           "inputs": [
@@ -1096,6 +1101,30 @@
           "inputs": [
             {
               "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "holder",
+              "type": "address"
+            }
+          ],
+          "name": "activeCredentialFrom",
+          "outputs": [
+            {
+              "internalType": "bytes32",
+              "name": "",
+              "type": "bytes32"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
               "name": "holder",
               "type": "address"
             }
@@ -1132,6 +1161,66 @@
               "internalType": "contract DIDRegistry",
               "name": "",
               "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "getAllCredentials",
+          "outputs": [
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "id",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "address",
+                  "name": "issuer",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "holder",
+                  "type": "address"
+                },
+                {
+                  "internalType": "string",
+                  "name": "credType",
+                  "type": "string"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "issuedAt",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "expiresAt",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "revoked",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "revokedAt",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct CredentialRegistry.Credential[]",
+              "name": "list",
+              "type": "tuple[]"
+            },
+            {
+              "internalType": "bool[]",
+              "name": "active",
+              "type": "bool[]"
             }
           ],
           "stateMutability": "view",
@@ -1183,6 +1272,11 @@
                   "internalType": "bool",
                   "name": "revoked",
                   "type": "bool"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "revokedAt",
+                  "type": "uint256"
                 }
               ],
               "internalType": "struct CredentialRegistry.Credential",
@@ -1234,6 +1328,49 @@
         {
           "inputs": [
             {
+              "internalType": "address",
+              "name": "holder",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "t",
+              "type": "uint256"
+            }
+          ],
+          "name": "hadLicenceAt",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "holder",
+              "type": "address"
+            }
+          ],
+          "name": "holderState",
+          "outputs": [
+            {
+              "internalType": "enum CredentialRegistry.State",
+              "name": "",
+              "type": "uint8"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
               "internalType": "bytes32",
               "name": "credentialId",
               "type": "bytes32"
@@ -1259,6 +1396,30 @@
             }
           ],
           "name": "isCredentialValid",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "holder",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            }
+          ],
+          "name": "isLicensedBy",
           "outputs": [
             {
               "internalType": "bool",
@@ -1321,16 +1482,21 @@
           "inputs": [
             {
               "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
               "name": "holder",
               "type": "address"
             }
           ],
-          "name": "licensedBy",
+          "name": "pairState",
           "outputs": [
             {
-              "internalType": "address",
+              "internalType": "enum CredentialRegistry.State",
               "name": "",
-              "type": "address"
+              "type": "uint8"
             }
           ],
           "stateMutability": "view",
@@ -1347,6 +1513,19 @@
           "name": "revokeCredential",
           "outputs": [],
           "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "totalCredentials",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
           "type": "function"
         },
         {
@@ -1395,12 +1574,41 @@
           ],
           "stateMutability": "view",
           "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "holder",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "t",
+              "type": "uint256"
+            }
+          ],
+          "name": "wasLicensedAt",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
         }
       ]
     },
     "pt": {
       "name": "ProductTransfer",
-      "address": "0x669A2526CdA459526475eA214Ec3A92d8093a67b",
+      "address": "0x51108D8E36237a9e1b3E7e5b9524AaeECa99693C",
       "abi": [
         {
           "inputs": [
@@ -1604,11 +1812,17 @@
             {
               "indexed": true,
               "internalType": "address",
-              "name": "holder",
+              "name": "manufacturer",
               "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
             }
           ],
-          "name": "ProductCancelled",
+          "name": "ProductCreated",
           "type": "event"
         },
         {
@@ -1625,15 +1839,9 @@
               "internalType": "address",
               "name": "manufacturer",
               "type": "address"
-            },
-            {
-              "indexed": false,
-              "internalType": "string",
-              "name": "name",
-              "type": "string"
             }
           ],
-          "name": "ProductCreated",
+          "name": "ProductDeleted",
           "type": "event"
         },
         {
@@ -1719,9 +1927,46 @@
               "internalType": "address",
               "name": "to",
               "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "reason",
+              "type": "string"
             }
           ],
           "name": "ProductReclaimed",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "from",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "reason",
+              "type": "string"
+            }
+          ],
+          "name": "ProductReturned",
           "type": "event"
         },
         {
@@ -1772,6 +2017,37 @@
             }
           ],
           "name": "ShipmentCancelled",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "sender",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "recipient",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "reason",
+              "type": "string"
+            }
+          ],
+          "name": "ShipmentReverted",
           "type": "event"
         },
         {
@@ -1928,6 +2204,19 @@
           "type": "function"
         },
         {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "productId",
+              "type": "uint256"
+            }
+          ],
+          "name": "deleteProduct",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
           "inputs": [],
           "name": "didRegistry",
           "outputs": [
@@ -1986,6 +2275,62 @@
               "internalType": "uint256[]",
               "name": "",
               "type": "uint256[]"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256[]",
+              "name": "ids",
+              "type": "uint256[]"
+            }
+          ],
+          "name": "getLastRecords",
+          "outputs": [
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "from",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "to",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "timestamp",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "confirmed",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "cancelled",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "enum Custody.Kind",
+                  "name": "kind",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "string",
+                  "name": "note",
+                  "type": "string"
+                }
+              ],
+              "internalType": "struct Custody.TransferRecord[]",
+              "name": "out",
+              "type": "tuple[]"
             }
           ],
           "stateMutability": "view",
@@ -2053,7 +2398,7 @@
                   "type": "address"
                 },
                 {
-                  "internalType": "enum ProductTransfer.Status",
+                  "internalType": "enum Custody.Status",
                   "name": "status",
                   "type": "uint8"
                 },
@@ -2078,7 +2423,7 @@
                   "type": "string"
                 }
               ],
-              "internalType": "struct ProductTransfer.Product",
+              "internalType": "struct Custody.Product",
               "name": "",
               "type": "tuple"
             }
@@ -2129,7 +2474,7 @@
                   "type": "address"
                 },
                 {
-                  "internalType": "enum ProductTransfer.Status",
+                  "internalType": "enum Custody.Status",
                   "name": "status",
                   "type": "uint8"
                 },
@@ -2154,7 +2499,7 @@
                   "type": "string"
                 }
               ],
-              "internalType": "struct ProductTransfer.Product[]",
+              "internalType": "struct Custody.Product[]",
               "name": "out",
               "type": "tuple[]"
             }
@@ -2236,9 +2581,19 @@
                   "internalType": "bool",
                   "name": "cancelled",
                   "type": "bool"
+                },
+                {
+                  "internalType": "enum Custody.Kind",
+                  "name": "kind",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "string",
+                  "name": "note",
+                  "type": "string"
                 }
               ],
-              "internalType": "struct ProductTransfer.TransferRecord[]",
+              "internalType": "struct Custody.TransferRecord[]",
               "name": "",
               "type": "tuple[]"
             }
@@ -2311,6 +2666,48 @@
             }
           ],
           "name": "reclaimProduct",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "productId",
+              "type": "uint256"
+            }
+          ],
+          "name": "reclaimable",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "ok",
+              "type": "bool"
+            },
+            {
+              "internalType": "string",
+              "name": "reason",
+              "type": "string"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "productId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "reason",
+              "type": "string"
+            }
+          ],
+          "name": "returnToSender",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
@@ -2405,6 +2802,30 @@
         {
           "inputs": [
             {
+              "internalType": "uint256",
+              "name": "productId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "who",
+              "type": "address"
+            }
+          ],
+          "name": "shipperTo",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
               "internalType": "bytes4",
               "name": "interfaceId",
               "type": "bytes4"
@@ -2493,7 +2914,7 @@
     },
     "ta": {
       "name": "TraceabilityAudit",
-      "address": "0x969Dbc6ED141fCA4b76fAf2003ad08B6B106f0C5",
+      "address": "0x9a8f8cFdD3C8a0542a7DF6E7c440fAf672b2688b",
       "abi": [
         {
           "inputs": [
@@ -2531,6 +2952,11 @@
                 {
                   "internalType": "bool",
                   "name": "verified",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "currentlyValid",
                   "type": "bool"
                 },
                 {
@@ -2581,6 +3007,11 @@
                 {
                   "internalType": "string",
                   "name": "failReason",
+                  "type": "string"
+                },
+                {
+                  "internalType": "string",
+                  "name": "currentNote",
                   "type": "string"
                 }
               ],

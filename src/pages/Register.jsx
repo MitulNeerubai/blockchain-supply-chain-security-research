@@ -4,12 +4,13 @@ import { apiHealth } from '../lib/api'
 import { ROLE_ICON, ROLE_LABEL, errMsg, short, validateCompanyName } from '../lib/format'
 import { Alert, Button, Field } from '../components/ui'
 import { EmailVerifier } from '../components/EmailSettings'
+import { NextSteps } from '../components/Onboarding'
 
 const ROLE_INFO = {
   LocalGovt:    'Licensed by the Root Authority. Issues Manufacturing Licenses to Manufacturers.',
   Manufacturer: 'Creates products. Licenses Distributors and ships products to them.',
-  Distributor:  'Receives products from its Manufacturer. Licenses Retailers and ships to them.',
-  Retailer:     'Receives products from its Distributor and verifies the full chain.',
+  Distributor:  'Receives products from the Manufacturers that licensed it (one or several). Licenses Retailers and ships to them.',
+  Retailer:     'Receives products from the Distributors that licensed it and verifies the full chain.',
 }
 
 export default function Register({ address, signer, onRegistered }) {
@@ -77,6 +78,8 @@ export default function Register({ address, signer, onRegistered }) {
             </div>
           </div>
 
+          {role && <NextSteps role={role} />}
+
           <Field
             label="2. Company name"
             error={nameErr || (avail.state === 'taken' ? `“${clean}” is already registered. Choose a different name.` : avail.state === 'error' ? avail.msg : '')}
@@ -99,8 +102,7 @@ export default function Register({ address, signer, onRegistered }) {
           <Button size="lg" block loading={busy} disabled={!ready} onClick={register}>
             {ready ? `Register as ${ROLE_LABEL[role]}` : 'Complete the steps above'}
           </Button>
-          {role === 'LocalGovt' && <p className="faint small center">After registering, the Root Governance Authority must grant your LG licence.</p>}
-          {role && role !== 'LocalGovt' && <p className="faint small center">After registering, a {ROLE_LABEL[{ Manufacturer: 'LocalGovt', Distributor: 'Manufacturer', Retailer: 'Distributor' }[role]]} must issue your licence.</p>}
+          {role && <p className="faint small center">After registering, a welcome guide opens on your dashboard and a checklist in the sidebar shows your next step.</p>}
         </div>
       </div>
     </div>

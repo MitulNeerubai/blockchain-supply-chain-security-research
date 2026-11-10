@@ -1,8 +1,8 @@
 # Node modules
 /node_modules
 
-# Compilation output
-/dist
+# Built UI (dist/) IS committed so cPanel Git deploy can serve it without building.
+# Rebuild with `npm run build` after every UI or contract change.
 
 # pnpm deploy output
 /bundle

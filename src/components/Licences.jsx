@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
-import { reader, loadIssuedBy, loadMyLicence } from '../lib/chain'
-import { useDirectory, useLoad, useSession, useTx } from '../lib/app'
-import { DAY, ISSUER_OF, LICENSES, LICENSE_LABEL, ROLE_LABEL, daysLeft, fmtDate, nowSec, short, isZero, sameAddr } from '../lib/format'
-import { Alert, Button, Card, CredPill, Empty, Entity, Field, Loading, Pill } from './ui'
+import { reader, loadIssuedBy, loadMyLicences } from '../lib/chain'
+import { useDirectory, useLoad, useNetwork, useSession, useTx } from '../lib/app'
+import { DAY, ISSUER_OF, LICENSES, LICENSE_LABEL, ROLE_LABEL, daysLeft, fmtDate, nowSec, short, sameAddr } from '../lib/format'
+import { Alert, Button, Card, CompanyLink, CredPill, Empty, Entity, Field, Loading, Pill } from './ui'
 
 /** Loads whether the signed-in wallet may act (LG: rootGA licence, others: own live licence). */
 export function useStanding() {
@@ -13,8 +13,9 @@ export function useStanding() {
       const [ok, at] = await Promise.all([trust.isAuthorizedIssuer(s.address), trust.authorizedAt(s.address)])
       return { ok, kind: 'lg', since: Number(at) }
     }
-    const lic = await loadMyLicence(s.address)
-    return { ok: lic?.status === 'active', kind: 'cred', lic }
+    const lics = await loadMyLicences(s.address)
+    const live = lics.filter(l => l.status === 'active')
+    return { ok: live.length > 0, kind: 'cred', lics, lic: live[0] || lics[0] || null }
   }, [s.address, s.role])
 }
 
@@ -41,38 +42,51 @@ export function LicenceBanner({ standing }) {
     )
   }
 
-  const lic = st.lic
+  const lics = st.lics || []
   const issuerRole = ISSUER_OF[s.role]
-  if (!lic) {
+  const licName = s.role === 'Manufacturer' ? 'Manufacturing License' : 'Trade License'
+  if (!lics.length) {
     return (
       <div className="card licence wait">
         <div className="licence-icon">⏳</div>
         <div className="grow">
           <div className="row"><b>No licence yet</b><Pill tone="amber" dot>Waiting</Pill></div>
           <div className="muted small" style={{ marginTop: 2 }}>
-            Ask a {ROLE_LABEL[issuerRole]} to issue your {s.role === 'Manufacturer' ? 'Manufacturing License' : 'Trade License'}. Share your wallet address <code>{short(s.address)}</code> with them.
+            Ask a {ROLE_LABEL[issuerRole]} to issue your {licName}. They will find you by company name in their licensing tab (your wallet: <code>{short(s.address)}</code>).
           </div>
         </div>
       </div>
     )
   }
-  const reason = {
+  const reasonOf = lic => ({
     active: `Valid until ${fmtDate(lic.expiresAt)} (${daysLeft(lic.expiresAt)} days left).`,
     suspended: `Suspended because ${d.name(lic.issuer)}'s own licence is no longer valid. It reactivates automatically if theirs is restored.`,
-    revoked: `Revoked by ${d.name(lic.issuer)}. Ask a ${ROLE_LABEL[issuerRole]} for a new licence.`,
-    expired: `Expired on ${fmtDate(lic.expiresAt)}. Ask a ${ROLE_LABEL[issuerRole]} to renew it.`,
-  }[lic.status]
+    revoked: `Revoked by ${d.name(lic.issuer)}${lic.revokedAt ? ` on ${fmtDate(lic.revokedAt)}` : ''}.`,
+    expired: `Expired on ${fmtDate(lic.expiresAt)}. Ask ${d.name(lic.issuer)} to renew it.`,
+  }[lic.status])
+  const live = lics.filter(l => l.status === 'active').length
+  const multi = s.role !== 'Manufacturer'
   return (
-    <div className={`card licence ${lic.status === 'active' ? 'ok' : 'bad'}`}>
-      <div className="licence-icon">{lic.status === 'active' ? '🪪' : '⛔'}</div>
+    <div className={`card licence ${live ? 'ok' : 'bad'}`} style={{ alignItems: 'flex-start' }}>
+      <div className="licence-icon">{live ? '🪪' : '⛔'}</div>
       <div className="grow">
-        <div className="row"><b>{LICENSE_LABEL[lic.type] || lic.type}</b><CredPill status={lic.status} /></div>
-        <div className="muted small" style={{ marginTop: 2 }}>{reason}</div>
-      </div>
-      <div className="kv">
-        <div className="kv-item"><div className="kv-k">Issued by</div><div className="kv-v">{d.name(lic.issuer)}</div></div>
-        <div className="kv-item"><div className="kv-k">Issued</div><div className="kv-v">{fmtDate(lic.issuedAt)}</div></div>
-        <div className="kv-item"><div className="kv-k">Expires</div><div className="kv-v">{fmtDate(lic.expiresAt)}</div></div>
+        <div className="row">
+          <b>{multi ? `Your ${licName}s` : licName}</b>
+          <Pill tone={live ? 'green' : 'red'} dot>{live ? `${live} active` : 'None active'}</Pill>
+          {multi && <span className="faint small">One licence per {ROLE_LABEL[issuerRole]} you work with</span>}
+        </div>
+        <div className="lic-list">
+          {lics.map(lic => (
+            <div className="lic-row" key={lic.id}>
+              <span className="grow">
+                <b>From <CompanyLink address={lic.issuer}>{d.name(lic.issuer)}</CompanyLink></b>
+                <span className="muted small"> — {reasonOf(lic)}</span>
+              </span>
+              <CredPill status={lic.status} />
+            </div>
+          ))}
+        </div>
+        {!live && <div className="muted small" style={{ marginTop: 6 }}>Until a {ROLE_LABEL[issuerRole]} gives you an active licence you cannot receive or ship products. You can always return products upstream.</div>}
       </div>
     </div>
   )
@@ -95,6 +109,7 @@ export function useActiveLicensees() {
 export function LicencePanel({ standing, onChange }) {
   const s = useSession()
   const d = useDirectory()
+  const net = useNetwork()
   const { run, busy } = useTx()
   const cfg = LICENSES[s.role]
   const targetLabel = ROLE_LABEL[cfg.target]
@@ -106,11 +121,11 @@ export function LicencePanel({ standing, onChange }) {
   const candidates = useLoad(async () => {
     const { cred } = reader()
     const list = d.byRole(cfg.target).filter(x => x.active)
-    const by = await Promise.all(list.map(x => cred.licensedBy(x.address)))
-    return list.map((x, i) => ({ ...x, licensedBy: isZero(by[i]) ? null : by[i] }))
-  }, [d.dir, cfg.target, issued.data])
+    const mine = await Promise.all(list.map(x => cred.isLicensedBy(x.address, s.address)))
+    return list.map((x, i) => ({ ...x, mine: mine[i], others: net.held(x.address).filter(c => c.active && !sameAddr(c.issuer, s.address)) }))
+  }, [d.dir, cfg.target, issued.data, net.creds])
 
-  const available = useMemo(() => (candidates.data || []).filter(c => !c.licensedBy), [candidates.data])
+  const available = useMemo(() => (candidates.data || []).filter(c => !c.mine), [candidates.data])
   const canIssue = standing.data?.ok
 
   async function issue(e) {
@@ -137,7 +152,7 @@ export function LicencePanel({ standing, onChange }) {
 
   return (
     <div className="grid grid-aside">
-      <Card title={`License a ${targetLabel}`} subtitle={`Issue a ${cfg.label}. Only registered ${targetLabel}s without a licence are listed.`}>
+      <Card title={`License a ${targetLabel}`} subtitle={`Issue a ${cfg.label}. Lists registered ${targetLabel}s that do not hold an active licence from you yet${s.role === 'LocalGovt' ? '' : ' (they may also work for others)'}.`}>
         {!canIssue && !standing.loading && (
           <div style={{ marginBottom: 14 }}>
             <Alert type="warning">You can issue licences once your own {s.role === 'LocalGovt' ? 'LG licence' : 'licence'} is active.</Alert>
@@ -146,11 +161,11 @@ export function LicencePanel({ standing, onChange }) {
         <form className="form" onSubmit={issue}>
           <Field
             label={targetLabel}
-            hint={candidates.loading ? 'Loading companies…' : available.length ? `${available.length} unlicensed ${targetLabel.toLowerCase()}${available.length === 1 ? '' : 's'}` : undefined}
+            hint={candidates.loading ? 'Loading companies…' : available.length ? `${available.length} ${targetLabel.toLowerCase()}${available.length === 1 ? '' : 's'} available` : undefined}
           >
             <select className="select" value={holder} onChange={e => setHolder(e.target.value)} disabled={!canIssue || !available.length}>
-              <option value="">{available.length ? `Select a ${targetLabel.toLowerCase()}…` : `No unlicensed ${targetLabel.toLowerCase()}s`}</option>
-              {available.map(c => <option key={c.address} value={c.address}>{c.company} — {short(c.address)}</option>)}
+              <option value="">{available.length ? `Select a ${targetLabel.toLowerCase()}…` : `No ${targetLabel.toLowerCase()}s without a licence from you`}</option>
+              {available.map(c => <option key={c.address} value={c.address}>{c.company} — {short(c.address)}{c.others.length ? ` (also works with ${c.others.length} other${c.others.length === 1 ? '' : 's'})` : ''}</option>)}
             </select>
           </Field>
           {holder && <div className="copy-box">{holder}</div>}
@@ -162,14 +177,14 @@ export function LicencePanel({ standing, onChange }) {
           </Button>
         </form>
 
-        {(candidates.data || []).some(c => c.licensedBy && !sameAddr(c.licensedBy, s.address)) && (
+        {(candidates.data || []).some(c => c.others.length > 0) && (
           <div style={{ marginTop: 18 }}>
-            <div className="field-label" style={{ marginBottom: 8 }}>Licensed by someone else</div>
+            <div className="field-label" style={{ marginBottom: 8 }}>Also licensed by others</div>
             <div className="stack" style={{ gap: 8 }}>
-              {candidates.data.filter(c => c.licensedBy && !sameAddr(c.licensedBy, s.address)).map(c => (
+              {candidates.data.filter(c => c.others.length > 0).map(c => (
                 <div key={c.address} className="row-between small">
                   <Entity address={c.address} name={c.company} role={c.role} size={28} />
-                  <span className="faint">by {d.name(c.licensedBy)}</span>
+                  <span className="faint">by {c.others.map(o => d.name(o.issuer)).join(', ')}</span>
                 </div>
               ))}
             </div>

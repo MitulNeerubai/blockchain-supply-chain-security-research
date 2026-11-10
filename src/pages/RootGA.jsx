@@ -5,6 +5,8 @@ import { fmtDate, fmtDateTime } from '../lib/format'
 import { Alert, Button, Card, Empty, Entity, Loading, Pill, Stat, Tabs } from '../components/ui'
 import { PageHead } from '../components/Layout'
 import { ProductLookup } from '../components/Products'
+import { TrustTree } from '../components/Network'
+import DashFrame from '../components/DashFrame'
 
 export default function RootGA() {
   const s = useSession()
@@ -37,8 +39,10 @@ export default function RootGA() {
     success: `LG licence of ${lg.company} revoked. Its licensing chain is suspended.`, onDone: lgs.reload,
   })
 
+  const facts = { loading: lgs.loading || totals.loading, lgLicensed: count('licensed'), products: totals.data || 0 }
+
   return (
-    <div className="page">
+    <DashFrame facts={facts} onGo={setTab}>
       <PageHead session={s} title="Root Governance Authority" subtitle="Grant Local Government licences — the root of the chain of trust." />
 
       <div className="grid grid-stats" style={{ marginBottom: 20 }}>
@@ -51,6 +55,7 @@ export default function RootGA() {
 
       <Tabs value={tab} onChange={setTab} tabs={[
         { id: 'lg', label: 'Local Governments', icon: '🏢', count: lgs.data?.length },
+        { id: 'tree', label: 'Trust map', icon: '🌳' },
         { id: 'lookup', label: 'Product lookup', icon: '🔍' },
         { id: 'audit', label: 'Audit trail', icon: '📜' },
       ]} />
@@ -99,6 +104,7 @@ export default function RootGA() {
         </Card>
       )}
 
+      {tab === 'tree' && <Card title="Trust hierarchy" subtitle="Every licence in the network, from you down to the retailers. Click any company for its profile."><TrustTree highlight={s.address} /></Card>}
       {tab === 'lookup' && <ProductLookup />}
 
       {tab === 'audit' && (
@@ -126,6 +132,6 @@ export default function RootGA() {
             )}
         </Card>
       )}
-    </div>
+    </DashFrame>
   )
 }

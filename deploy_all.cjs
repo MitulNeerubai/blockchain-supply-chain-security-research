@@ -27,13 +27,17 @@ async function main() {
   console.log(`Balance: ${ethers.formatEther(await ethers.provider.getBalance(deployer))}\n`);
 
   const deploy = async (name, ...args) => {
-    const c = await (await ethers.getContractFactory(name)).deploy(...args);
+    const opts = name === "ProductTransfer" ? { libraries: { Custody: custodyAddr } } : {};
+    const c = await (await ethers.getContractFactory(name, opts)).deploy(...args);
     await c.waitForDeployment();
     const addr = await c.getAddress();
     console.log(`✅ ${name.padEnd(19)} ${addr}`);
     return { c, addr };
   };
 
+  let custodyAddr;
+  const custody = await deploy("Custody");           // linked library used by ProductTransfer
+  custodyAddr = custody.addr;
   const audit = await deploy("AuditLog");
   const trust = await deploy("TrustRegistry");
   const did   = await deploy("DIDRegistry", trust.addr, audit.addr);
@@ -56,6 +60,7 @@ async function main() {
     deployedAt: new Date().toISOString(),
     deployBlock: block,
     contracts: {
+      custody: { name: "Custody",           address: custody.addr, abi: [] },
       audit:  { name: "AuditLog",           address: audit.addr, abi: abi("AuditLog") },
       trust:  { name: "TrustRegistry",      address: trust.addr, abi: abi("TrustRegistry") },
       did:    { name: "DIDRegistry",        address: did.addr,   abi: abi("DIDRegistry") },

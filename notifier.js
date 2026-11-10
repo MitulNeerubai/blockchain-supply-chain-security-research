@@ -22,7 +22,8 @@ const dep = JSON.parse(readFileSync(depPath, 'utf8'))
 const RPC = process.env.BESU_RPC || dep.rpcUrl
 const PORTAL = process.env.PORTAL_URL || 'https://mitul.didlab.org'
 
-const provider = new ethers.JsonRpcProvider(RPC, dep.chainId, { staticNetwork: true })
+// polling: read new logs every few seconds instead of eth_newFilter — Besu silently drops idle filters
+const provider = new ethers.JsonRpcProvider(RPC, dep.chainId, { staticNetwork: true, polling: true, pollingInterval: 8000 })
 const C = name => new ethers.Contract(dep.contracts[name].address, dep.contracts[name].abi, provider)
 const pt = C('pt'), did = C('did'), cred = C('cred'), trust = C('trust')
 

@@ -46,6 +46,17 @@ library Custody {
         require(quantity >= 1 && quantity <= 1_000_000_000, "ProductTransfer: quantity must be between 1 and 1,000,000,000");
     }
 
+    /// Case-insensitive key for a batch number (ASCII A-Z folded to a-z).
+    function batchKey(string memory batch) public pure returns (bytes32) {
+        bytes memory b = bytes(batch);
+        bytes memory lower = new bytes(b.length);
+        for (uint256 i = 0; i < b.length; i++) {
+            bytes1 c = b[i];
+            lower[i] = (c >= 0x41 && c <= 0x5A) ? bytes1(uint8(c) + 32) : c;
+        }
+        return keccak256(lower);
+    }
+
     function checkDelete(Product storage p, TransferRecord[] storage h, address sender) external view {
         require(p.manufacturer == sender, "ProductTransfer: only the manufacturer can delete");
         require(p.currentHolder == sender && p.status == Status.InStock, "ProductTransfer: product must be in your stock to delete");

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { loadProducts, reader } from '../lib/chain'
 import { useLoad, useSession, useTx } from '../lib/app'
 import { PRODUCT_LIMITS, sameAddr, validateProduct } from '../lib/format'
@@ -49,8 +49,22 @@ export default function Manufacturer() {
   const reloadAll = async () => { await Promise.all([products.reload(), incoming.reload()]); rc.reload() }
   const del = useDelete(reloadAll)
 
+  // Live check: batch numbers are unique per manufacturer (enforced by the contract too)
+  const [batchTaken, setBatchTaken] = useState(null) // product id using it, or null
+  const batchClean = form.batch.trim()
+  useEffect(() => {
+    setBatchTaken(null)
+    if (!batchClean) return
+    const t = setTimeout(async () => {
+      try { const id = Number(await reader().pt.batchUsedBy(s.address, batchClean)); setBatchTaken(id || null) }
+      catch { /* older contract without the check */ }
+    }, 350)
+    return () => clearTimeout(t)
+  }, [batchClean, s.address, products.data])
+
   const errors = validateProduct(form)
-  const showErr = k => (touched[k] || submitted) && errors[k]
+  if (!errors.batch && batchTaken) errors.batch = `You already used batch “${batchClean}” for product #${batchTaken}. Batch numbers must be unique.`
+  const showErr = k => (touched[k] || submitted || (k === 'batch' && batchTaken)) && errors[k]
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
   const blur = k => () => setTouched(t => ({ ...t, [k]: true }))
 

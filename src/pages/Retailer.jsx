@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { loadAudit, loadProducts, reader } from '../lib/chain'
-import { useLoad, useSession, useTx } from '../lib/app'
+import { useDirectory, useLoad, useSession, useTx } from '../lib/app'
 import { KIND, errMsg, sameAddr } from '../lib/format'
-import { Alert, Button, Card, Empty, Loading, Stat, Tabs } from '../components/ui'
+import { Alert, Button, Card, Empty, Entity, Loading, Stat, Tabs } from '../components/ui'
 import { PageHead } from '../components/Layout'
 import { LicenceBanner, useStanding } from '../components/Licences'
 import { AuditVerdict, ProductLookup } from '../components/Products'
@@ -15,6 +15,7 @@ const distributorOf = p => (p.last ? (p.last.kind === KIND.SHIP ? p.last.from : 
 
 export default function Retailer() {
   const s = useSession()
+  const d = useDirectory()
   const standing = useStanding()
   const incoming = useIncoming()
   const { run, busy } = useTx()
@@ -76,18 +77,33 @@ export default function Retailer() {
               const dt = distributorOf(items[0])
               return (
                 <GroupBox key={k} address={dt} title="Distributor" count={items.length} extra={<PairPill issuer={dt} holder={s.address} />}>
-                  {items.map(p => {
-                    const a = audits[p.id]
+                  {groupBy(items, p => p.manufacturer).map(([mk, sub]) => {
+                    const mf = sub[0].manufacturer
+                    const who = d.get(mf)
+                    const inStore = sub.filter(p => p.status === 2).length
+                    const back = sub.filter(p => p.status === 1).length
                     return (
-                      <ProductItem key={p.id} p={p}
-                        actions={<>
-                          {buttons(p)}
-                          {p.status === 2 && <Button size="sm" loading={a === 'loading'} onClick={() => verify(p)}>🔍 Verify chain</Button>}
-                          {p.status === 2 && ret.button(p)}
-                          {p.status === 1 && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'cancel:' + p.id} onClick={() => cancel(p)}>Cancel return</Button>}
-                        </>}
-                        foot={a && a !== 'loading' && <AuditVerdict audit={a} compact />}
-                      />
+                      <div className="subgroup" key={mk}>
+                        <div className="subgroup-head">
+                          <Entity address={mf} name={who?.company} role={who?.role} size={26}
+                            sub={['Manufacturer', inStore && `${inStore} in store`, back && `${back} being returned`].filter(Boolean).join(' · ')} />
+                          <span className="tab-count">{sub.length}</span>
+                        </div>
+                        {sub.map(p => {
+                          const a = audits[p.id]
+                          return (
+                            <ProductItem key={p.id} p={p}
+                              actions={<>
+                                {buttons(p)}
+                                {p.status === 2 && <Button size="sm" loading={a === 'loading'} onClick={() => verify(p)}>🔍 Verify chain</Button>}
+                                {p.status === 2 && ret.button(p)}
+                                {p.status === 1 && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'cancel:' + p.id} onClick={() => cancel(p)}>Cancel return</Button>}
+                              </>}
+                              foot={a && a !== 'loading' && <AuditVerdict audit={a} compact />}
+                            />
+                          )
+                        })}
+                      </div>
                     )
                   })}
                 </GroupBox>

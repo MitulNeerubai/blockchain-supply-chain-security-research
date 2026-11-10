@@ -479,3 +479,8 @@ textarea.input { resize: vertical; min-height: 60px; }
   .item-actions { width: 100%; }
   .tabs { margin-left: -16px; margin-right: -16px; padding: 0 16px; }
 }
+
+/* Sub-boxes inside a manufacturer box (one per retailer / "In your stock") */
+.subgroup { border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--surface); padding: 10px; }
+.subgroup + .subgroup { margin-top: 10px; }
+.subgroup-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 2px 4px 10px; }

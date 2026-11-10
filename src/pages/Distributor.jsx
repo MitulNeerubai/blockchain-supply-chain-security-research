@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { loadProducts, reader } from '../lib/chain'
 import { useDirectory, useLoad, useNetwork, useSession, useTx } from '../lib/app'
 import { sameAddr } from '../lib/format'
-import { Alert, Button, Card, Empty, Loading, Stat, Tabs } from '../components/ui'
+import { Alert, Button, Card, Empty, Entity, Loading, Stat, Tabs } from '../components/ui'
 import { PageHead } from '../components/Layout'
 import { LicenceBanner, LicencePanel, useActiveLicensees, useStanding } from '../components/Licences'
 import { ProductLookup } from '../components/Products'
@@ -42,6 +42,62 @@ export default function Distributor() {
   const ret = useReturn(reloadAll)
   const cancel = p => run('cancel:' + p.id, () => s.write.pt.cancelShipment(p.id), { success: 'Shipment cancelled — product is back in stock.', onDone: reloadAll })
   const recall = p => run('recall:' + p.id, () => s.write.pt.forceRecall(p.id), { success: `“${p.name}” recalled from ${d.name(p.holder)}.`, onDone: reloadAll })
+
+  // Inside each manufacturer box: one sub-box per destination
+  //   'stock'      → still with me
+  //   <retailer>   → in transit to it, or delivered there
+  //   <mf>         → being returned to the manufacturer
+  const destOf = p => (p.status === 0 && mine(p) ? 'stock' : mine(p) ? p.pending : p.holder)
+  // Stock first; show an empty "In your stock" box under the All filter
+  function subGroups(list0) {
+    const g = groupBy(list0, destOf).sort(([a], [b]) => (a === 'stock' ? -1 : b === 'stock' ? 1 : 0))
+    if (filter === 'all' && !g.some(([k]) => k === 'stock')) g.unshift(['stock', []])
+    return g
+  }
+
+  const productRow = (p, ok) => (
+    <ProductItem key={p.id} p={p}
+      warn={rc.data?.[p.id]?.ok ? rc.data[p.id].reason : null}
+      actions={<>
+        {buttons(p)}
+        {p.status === 0 && mine(p) && ret.button(p)}
+        {p.status === 1 && mine(p) && !rc.data?.[p.id]?.ok && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'cancel:' + p.id} onClick={() => cancel(p)}>Cancel shipment</Button>}
+        <CallBackButton p={p} info={rc.data?.[p.id]} onDone={reloadAll} />
+        {p.status === 2 && !mine(p) && !rc.data?.[p.id]?.ok && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'recall:' + p.id} onClick={() => recall(p)}>Force recall</Button>}
+      </>}
+      foot={p.status === 0 && mine(p) && ok && <ShipForm product={p} partners={partners.data || []} partnerLabel="Retailer" onShipped={reloadAll} />}
+    />
+  )
+
+  function renderSub(dest, sub, manufacturer) {
+    const ok = licFrom(manufacturer)?.active
+    if (dest === 'stock') {
+      return (
+        <div className="subgroup" key="stock">
+          <div className="subgroup-head"><span className="strong">📦 In your stock</span><span className="tab-count">{sub.length}</span></div>
+          {sub.length ? sub.map(p => productRow(p, ok)) : <p className="faint small">Nothing from {d.name(manufacturer)} in stock right now.</p>}
+        </div>
+      )
+    }
+    dest = destOf(sub[0])              // original-case address (group keys are lowercased)
+    const who = d.get(dest)
+    const returning = sameAddr(dest, manufacturer)
+    const inTransit = sub.filter(p => p.status === 1).length
+    const delivered = sub.filter(p => p.status === 2).length
+    return (
+      <div className="subgroup" key={dest}>
+        <div className="subgroup-head">
+          <Entity address={dest} name={who?.company} role={who?.role} size={26}
+            sub={returning ? 'Returning to manufacturer' : [inTransit && `${inTransit} in transit`, delivered && `${delivered} delivered`].filter(Boolean).join(' · ') || 'Retailer'} />
+          <div className="row" style={{ gap: 8 }}>
+            {!returning && <PairPill issuer={s.address} holder={dest} />}
+            <span className="tab-count">{sub.length}</span>
+          </div>
+        </div>
+        {sub.map(p => productRow(p, ok))}
+      </div>
+    )
+  }
 
   // Licence from each manufacturer decides what I may do with its products
   const licFrom = mf => net.pair(mf, s.address)
@@ -109,19 +165,7 @@ export default function Distributor() {
                         </Alert>
                       </div>
                     )}
-                    {items.map(p => (
-                      <ProductItem key={p.id} p={p}
-                        warn={rc.data?.[p.id]?.ok ? rc.data[p.id].reason : null}
-                        actions={<>
-                          {buttons(p)}
-                          {p.status === 0 && mine(p) && ret.button(p)}
-                          {p.status === 1 && mine(p) && !rc.data?.[p.id]?.ok && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'cancel:' + p.id} onClick={() => cancel(p)}>Cancel shipment</Button>}
-                          <CallBackButton p={p} info={rc.data?.[p.id]} onDone={reloadAll} />
-                          {p.status === 2 && !mine(p) && !rc.data?.[p.id]?.ok && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'recall:' + p.id} onClick={() => recall(p)}>Force recall</Button>}
-                        </>}
-                        foot={p.status === 0 && mine(p) && ok && <ShipForm product={p} partners={partners.data || []} partnerLabel="Retailer" onShipped={reloadAll} />}
-                      />
-                    ))}
+                    {subGroups(items).map(([dk, sub]) => renderSub(dk, sub, mf))}
                   </GroupBox>
                 )
               })}

@@ -19,7 +19,7 @@ import { verifyMessage, isAddress } from 'ethers'
 const __dirname   = dirname(fileURLToPath(import.meta.url))
 const EMAILS_PATH = join(__dirname, 'emails.json')
 const STATIC_DIR  = resolve(__dirname, process.env.STATIC_DIR || 'dist')
-const PORT        = parseInt(process.env.APP_PORT) || 3001
+const PORT        = parseInt(process.env.APP_PORT || process.env.PORT) || 3001  // PORT is set by cPanel/Passenger
 
 // ─── .env (no dotenv needed) ────────────────────────────────────────────────
 try {

@@ -36,8 +36,9 @@ async function fullChain() {
   return f;
 }
 
-async function createProduct(pt, mf, name = "Widget") {
-  const tx = await pt.connect(mf).createProduct(name, "", 10, "desc", "BATCH-1");
+let batchSeq = 0; // every test product gets its own batch number (unique per manufacturer)
+async function createProduct(pt, mf, name = "Widget", batch = `BATCH-${++batchSeq}`) {
+  const tx = await pt.connect(mf).createProduct(name, "", 10, "desc", batch);
   const rc = await tx.wait();
   return rc.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
     .find(e => e?.name === "ProductCreated").args.id;
@@ -394,6 +395,24 @@ describe("v4 — required fields, delete, returns, call-back, multi-manufacturer
     expect(r.verified, r.failReason).to.be.true;
     expect(r.currentlyValid).to.be.false;
     expect(r.currentNote).to.equal("Retailer's licence from the distributor is no longer valid");
+  });
+
+  it("batch number is unique per manufacturer (case-insensitive) and freed on delete", async () => {
+    const { pt, did, cred, lg, mf, mf2 } = await fullChain();
+    const DUP = "ProductTransfer: you already used this batch number";
+    const a = await createProduct(pt, mf, "First", "ACME-001");
+    expect(await pt.batchUsedBy(mf, "acme-001")).to.equal(a);
+    await expect(pt.connect(mf).createProduct("Second", "", 1, "d", "ACME-001")).to.be.revertedWith(DUP);
+    await expect(pt.connect(mf).createProduct("Second", "", 1, "d", "acme-001")).to.be.revertedWith(DUP);
+    // another manufacturer may use the same batch number
+    await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");
+    await cred.connect(lg).issueCredential(mf2, await expiry());
+    await createProduct(pt, mf2, "Beta thing", "ACME-001");
+    // deleting frees the batch number for reuse
+    await pt.connect(mf).deleteProduct(a);
+    expect(await pt.batchUsedBy(mf, "ACME-001")).to.equal(0n);
+    const b = await createProduct(pt, mf, "Fixed", "ACME-001");
+    expect(await pt.batchUsedBy(mf, "ACME-001")).to.equal(b);
   });
 
   it("getLastRecords / shipperTo helpers", async () => {

@@ -3,17 +3,17 @@
   "chainId": 252501,
   "rpcUrl": "https://eth.didlab.org",
   "deployer": "0x71f15B6EC8fea94495B5608D2d48c73C060d488e",
-  "deployedAt": "2026-11-10T16:56:56.741Z",
-  "deployBlock": 7347098,
+  "deployedAt": "2026-11-10T23:06:58.282Z",
+  "deployBlock": 7358199,
   "contracts": {
     "custody": {
       "name": "Custody",
-      "address": "0xB67F73C1f0bd7F1C09a52E3082362BD771883145",
+      "address": "0x8beC1C1147D6142109C44b024e66c772374e5E78",
       "abi": []
     },
     "audit": {
       "name": "AuditLog",
-      "address": "0x38c24096e1AC10217ef73446118EC8d605a9070F",
+      "address": "0xf184B7594C5f2D51CC76f2A7300E5bb60bC4BC64",
       "abi": [
         {
           "inputs": [],
@@ -282,7 +282,7 @@
     },
     "trust": {
       "name": "TrustRegistry",
-      "address": "0x1779EB3a74e421b8a7F5361Cecc8D001BC1Fd36a",
+      "address": "0x212A7b5Ba36ad517AF9506E509D602080871cB0B",
       "abi": [
         {
           "inputs": [],
@@ -521,7 +521,7 @@
     },
     "did": {
       "name": "DIDRegistry",
-      "address": "0x8BC7cd961B9421f95b1db698D8411Ec7d4855C5a",
+      "address": "0xB71B34Ef3cA73D7eB679d7cd5A8e5EC0944Fd70C",
       "abi": [
         {
           "inputs": [
@@ -970,7 +970,7 @@
     },
     "cred": {
       "name": "CredentialRegistry",
-      "address": "0x895F74c0B513905b38ff1929d5C982d800176331",
+      "address": "0xA69A014804B6aD01dc1E56e9aBc523efe7336BE3",
       "abi": [
         {
           "inputs": [
@@ -1608,7 +1608,7 @@
     },
     "pt": {
       "name": "ProductTransfer",
-      "address": "0x51108D8E36237a9e1b3E7e5b9524AaeECa99693C",
+      "address": "0xf7D38494A31376Bb64AcF49693372b5fb33653A2",
       "abi": [
         {
           "inputs": [
@@ -2115,6 +2115,30 @@
             }
           ],
           "name": "balanceOf",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "manufacturer",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "batchNumber",
+              "type": "string"
+            }
+          ],
+          "name": "batchUsedBy",
           "outputs": [
             {
               "internalType": "uint256",
@@ -2914,7 +2938,7 @@
     },
     "ta": {
       "name": "TraceabilityAudit",
-      "address": "0x9a8f8cFdD3C8a0542a7DF6E7c440fAf672b2688b",
+      "address": "0xecA4153CD6f7A6Fc7251e1edc8186761c73a7cCf",
       "abi": [
         {
           "inputs": [

@@ -33,6 +33,8 @@ contract ProductTransfer is ERC721 {
     mapping(address => uint256[])                private _shipmentsTo;     // every product ever shipped/returned to the address
     mapping(address => mapping(uint256 => bool)) private _heldIndexed;
     mapping(address => mapping(uint256 => bool)) private _shipIndexed;
+    /// manufacturer => case-insensitive batch key => product id using it (0 = free)
+    mapping(address => mapping(bytes32 => uint256)) private _batchUsedBy;
 
     event ProductCreated(uint256 indexed id, address indexed manufacturer, string name);
     event ProductDeleted(uint256 indexed id, address indexed manufacturer);
@@ -60,6 +62,7 @@ contract ProductTransfer is ERC721 {
 
     // ── Create / delete ─────────────────────────────────────────────────────
     /// @notice Name, quantity, batch number and description are all required.
+    ///         A batch number is unique per manufacturer (case-insensitive).
     function createProduct(
         string calldata name, string calldata ipfsCID, uint256 quantity,
         string calldata description, string calldata batchNumber
@@ -67,8 +70,11 @@ contract ProductTransfer is ERC721 {
         require(didRegistry.hasRole(msg.sender, "Manufacturer"), "ProductTransfer: only Manufacturers can create products");
         require(credRegistry.isCredentialValid(msg.sender), "ProductTransfer: no valid credential");
         Custody.checkCreate(name, batchNumber, description, quantity);
+        bytes32 bk = Custody.batchKey(batchNumber);
+        require(_batchUsedBy[msg.sender][bk] == 0, "ProductTransfer: you already used this batch number");
 
         id = _nextId++;
+        _batchUsedBy[msg.sender][bk] = id;
         _products[id] = Custody.Product({
             id: id, name: name, ipfsCID: ipfsCID, manufacturer: msg.sender,
             currentHolder: msg.sender, pendingRecipient: address(0), status: Custody.Status.InStock,
@@ -88,6 +94,7 @@ contract ProductTransfer is ERC721 {
     function deleteProduct(uint256 productId) external productExists(productId) {
         Custody.Product storage p = _products[productId];
         Custody.checkDelete(p, _history[productId], msg.sender);
+        delete _batchUsedBy[msg.sender][Custody.batchKey(p.batchNumber)];   // batch number can be reused
         p.status        = Custody.Status.Deleted;
         p.currentHolder = address(0);
         _burn(productId);
@@ -214,6 +221,11 @@ contract ProductTransfer is ERC721 {
             Custody.TransferRecord[] storage h = _history[ids[i]];
             if (h.length > 0) out[i] = h[h.length - 1];
         }
+    }
+
+    /// @notice Product id that already uses this batch number for this manufacturer (0 = free).
+    function batchUsedBy(address manufacturer, string calldata batchNumber) external view returns (uint256) {
+        return _batchUsedBy[manufacturer][Custody.batchKey(batchNumber)];
     }
 
     /// @notice The party that shipped the product to `who` most recently (0x0 if none).

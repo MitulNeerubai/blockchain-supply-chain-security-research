@@ -60,7 +60,7 @@ code, .mono { font-family: var(--mono); font-size: .92em; }
   border-bottom: 1px solid rgba(255,255,255,.06);
 }
 .topbar-inner {
-  max-width: none; margin: 0 auto; padding: 0 32px;
+  max-width: 1240px; margin: 0 auto; padding: 0 24px;
   height: 60px; display: flex; align-items: center; gap: 16px;
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; color: #fff; }
@@ -91,7 +91,7 @@ code, .mono { font-family: var(--mono); font-size: .92em; }
 .btn-ghost-dark:hover { background: rgba(255,255,255,.08); color: #fff; }
 
 /* ── Page ─────────────────────────────────────────────────── */
-.page { max-width: none; margin: 0 auto; padding: 28px 32px 64px; }
+.page { max-width: 1240px; margin: 0 auto; padding: 28px 24px 64px; }
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
 .page-title { font-size: 22px; font-weight: 800; }
 .page-sub { color: var(--text-2); margin-top: 4px; }

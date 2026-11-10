@@ -1,0 +1,9 @@
+# cPanel → Git™ Version Control → "Deploy HEAD Commit" runs these steps.
+# It copies the pre-built site (dist/, committed in this repo) into public_html.
+# Nothing is built on the server: run `npm run build` locally and commit dist/ first.
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=$HOME/public_html/
+    - /bin/mkdir -p $DEPLOYPATH
+    - /bin/cp -R dist/* $DEPLOYPATH

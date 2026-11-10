@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "./ProductTransfer.sol";
+import "./Custody.sol";
 import "./CredentialRegistry.sol";
 import "./DIDRegistry.sol";
 
@@ -42,8 +43,8 @@ contract TraceabilityAudit {
     function auditProduct(uint256 productId) public view returns (AuditResult memory r) {
         r.productId = productId;
 
-        ProductTransfer.Product memory p;
-        try productTransfer.getProduct(productId) returns (ProductTransfer.Product memory _p) { p = _p; }
+        Custody.Product memory p;
+        try productTransfer.getProduct(productId) returns (Custody.Product memory _p) { p = _p; }
         catch { r.failReason = "Product not found"; return r; }
 
         r.productName    = p.name;
@@ -51,29 +52,29 @@ contract TraceabilityAudit {
         r.manufacturer   = p.manufacturer;
         r.manufacturedAt = p.createdAt;
 
-        if (p.status == ProductTransfer.Status.Deleted) { r.failReason = "Product was deleted by its manufacturer"; return r; }
-        if (p.status != ProductTransfer.Status.Delivered) {
-            r.failReason = p.status == ProductTransfer.Status.InTransit
+        if (p.status == Custody.Status.Deleted) { r.failReason = "Product was deleted by its manufacturer"; return r; }
+        if (p.status != Custody.Status.Delivered) {
+            r.failReason = p.status == Custody.Status.InTransit
                 ? "Incomplete chain: product is in transit and has not reached a retailer yet"
                 : "Incomplete chain: product is not at a retailer (not delivered yet, or returned / recalled)";
             return r;
         }
 
         // Delivered ⇒ the last confirmed hop is a Ship DT → RT (any later movement changes the status).
-        ProductTransfer.TransferRecord[] memory h = productTransfer.getTransferHistory(productId);
+        Custody.TransferRecord[] memory h = productTransfer.getTransferHistory(productId);
         uint256 last = type(uint256).max;
         for (uint256 i = h.length; i > 0; i--) {
             if (h[i - 1].confirmed && !h[i - 1].cancelled) { last = i - 1; break; }
         }
-        if (last == type(uint256).max || h[last].kind != ProductTransfer.Kind.Ship || h[last].to != p.currentHolder) {
+        if (last == type(uint256).max || h[last].kind != Custody.Kind.Ship || h[last].to != p.currentHolder) {
             r.failReason = "Incomplete chain: no confirmed shipment to the retailer"; return r;
         }
         // The Distributor received it from the Manufacturer before that.
         bool haveMf;
         uint256 mfIdx;
         for (uint256 i = last; i > 0; i--) {
-            ProductTransfer.TransferRecord memory x = h[i - 1];
-            if (x.kind == ProductTransfer.Kind.Ship && x.confirmed && !x.cancelled && x.from == p.manufacturer && x.to == h[last].from) {
+            Custody.TransferRecord memory x = h[i - 1];
+            if (x.kind == Custody.Kind.Ship && x.confirmed && !x.cancelled && x.from == p.manufacturer && x.to == h[last].from) {
                 haveMf = true; mfIdx = i - 1; break;
             }
         }

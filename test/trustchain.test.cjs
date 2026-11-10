@@ -12,7 +12,8 @@ async function deployAll() {
   const trust = await (await ethers.getContractFactory("TrustRegistry")).deploy();
   const did   = await (await ethers.getContractFactory("DIDRegistry")).deploy(trust, audit);
   const cred  = await (await ethers.getContractFactory("CredentialRegistry")).deploy(trust, did, audit);
-  const pt    = await (await ethers.getContractFactory("ProductTransfer")).deploy(cred, did, audit);
+  const lib   = await (await ethers.getContractFactory("Custody")).deploy();
+  const pt    = await (await ethers.getContractFactory("ProductTransfer", { libraries: { Custody: await lib.getAddress() } })).deploy(cred, did, audit);
   const ta    = await (await ethers.getContractFactory("TraceabilityAudit")).deploy(pt, cred, did);
   for (const c of [did, cred, pt]) await audit.registerContract(c, "c");
   return { rootGA, lg, mf, dt, rt, mf2, dt2, rt2, outsider, audit, trust, did, cred, pt, ta };

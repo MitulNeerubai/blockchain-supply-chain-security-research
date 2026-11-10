@@ -12,11 +12,11 @@ import "./AuditLog.sol";
 ///           LocalGovt    ──ManufacturingLicense──▶ Manufacturer
 ///           Manufacturer ──TradeLicense──────────▶ Distributor
 ///           Distributor  ──TradeLicense──────────▶ Retailer
+///         A holder can be licensed by SEVERAL issuers (e.g. a Distributor working
+///         for two Manufacturers) but holds at most one live licence per issuer.
 ///         A credential is only valid while its issuer is still trusted
 ///         (cascading revocation): revoking an LG suspends its Manufacturers,
 ///         their Distributors and their Retailers.
-///         Each wallet holds at most one live credential; issuing a new one
-///         supersedes (revokes) any older one.
 contract CredentialRegistry {
     struct Credential {
         bytes32 id;
@@ -26,7 +26,11 @@ contract CredentialRegistry {
         uint256 issuedAt;
         uint256 expiresAt;
         bool    revoked;
+        uint256 revokedAt;
     }
+
+    /// Licence state between one issuer and one holder (also used for "any issuer").
+    enum State { None, Active, Revoked, Expired, Suspended }
 
     string public constant MANUFACTURING_LICENSE = "ManufacturingLicense";
     string public constant TRADE_LICENSE         = "TradeLicense";
@@ -38,6 +42,8 @@ contract CredentialRegistry {
     mapping(bytes32 => Credential) private _creds;
     mapping(address => bytes32[])  private _byIssuer;
     mapping(address => bytes32[])  private _byHolder;
+    mapping(address => mapping(address => bytes32[])) private _byPair; // issuer => holder => ids
+    bytes32[] private _all;
     uint256 private _nonce;
 
     event CredentialIssued(bytes32 indexed credentialId, address indexed issuer, address indexed holder, string credType, uint256 expiresAt);
@@ -59,13 +65,16 @@ contract CredentialRegistry {
         require(didRegistry.isActiveDID(holder), "CredentialRegistry: holder does not have an active DID");
 
         string memory credType = _licenceTypeFor(msg.sender, holder);
-        require(activeCredentialOf(holder) == bytes32(0), "CredentialRegistry: holder already has an active licence. Revoke it first.");
+        require(activeCredentialFrom(msg.sender, holder) == bytes32(0),
+            "CredentialRegistry: you already gave this company an active licence. Revoke it first.");
 
-        // Supersede any stale (suspended/expired but not revoked) credentials.
-        bytes32[] storage old = _byHolder[holder];
+        // Supersede this issuer's stale (suspended/expired but not revoked) credentials for the holder.
+        bytes32[] storage old = _byPair[msg.sender][holder];
         for (uint256 i = 0; i < old.length; i++) {
-            if (!_creds[old[i]].revoked) {
-                _creds[old[i]].revoked = true;
+            Credential storage o = _creds[old[i]];
+            if (!o.revoked) {
+                o.revoked = true;
+                o.revokedAt = block.timestamp;
                 emit CredentialRevoked(old[i], msg.sender, holder);
             }
         }
@@ -73,10 +82,12 @@ contract CredentialRegistry {
         credentialId = keccak256(abi.encodePacked(msg.sender, holder, credType, _nonce++, block.timestamp));
         _creds[credentialId] = Credential({
             id: credentialId, issuer: msg.sender, holder: holder, credType: credType,
-            issuedAt: block.timestamp, expiresAt: expiresAt, revoked: false
+            issuedAt: block.timestamp, expiresAt: expiresAt, revoked: false, revokedAt: 0
         });
         _byIssuer[msg.sender].push(credentialId);
         _byHolder[holder].push(credentialId);
+        _byPair[msg.sender][holder].push(credentialId);
+        _all.push(credentialId);
 
         auditLog.logAction(msg.sender, "CREDENTIAL_ISSUED",
             string.concat("credId=", Strings.toHexString(uint256(credentialId), 32), " type=", credType, " holder=", Strings.toHexString(holder)));
@@ -89,11 +100,12 @@ contract CredentialRegistry {
         require(c.issuer == msg.sender, "CredentialRegistry: only issuer can revoke");
         require(!c.revoked, "CredentialRegistry: already revoked");
         c.revoked = true;
+        c.revokedAt = block.timestamp;
         auditLog.logAction(msg.sender, "CREDENTIAL_REVOKED", string.concat("credId=", Strings.toHexString(uint256(credentialId), 32)));
         emit CredentialRevoked(credentialId, msg.sender, c.holder);
     }
 
-    // ── Validity ────────────────────────────────────────────────────────────
+    // ── Validity (now) ──────────────────────────────────────────────────────
     /// @notice True if this credential is live: not revoked/expired, both DIDs
     ///         active, and the issuer is itself still trusted (recursively).
     function isCredentialActive(bytes32 credentialId) public view returns (bool) {
@@ -104,24 +116,35 @@ contract CredentialRegistry {
         return _issuerTrusted(c.issuer);
     }
 
-    /// @notice Latest live credential of a holder, or 0x0.
+    /// @notice Latest live credential of a holder from ANY issuer, or 0x0.
     function activeCredentialOf(address holder) public view returns (bytes32) {
-        bytes32[] storage ids = _byHolder[holder];
-        for (uint256 i = ids.length; i > 0; i--) {
-            if (isCredentialActive(ids[i - 1])) return ids[i - 1];
-        }
-        return bytes32(0);
+        return _latestActive(_byHolder[holder]);
     }
 
+    /// @notice Latest live credential `issuer` gave `holder`, or 0x0.
+    function activeCredentialFrom(address issuer, address holder) public view returns (bytes32) {
+        return _latestActive(_byPair[issuer][holder]);
+    }
+
+    /// @notice Holder has at least one live licence (from anyone).
     function isCredentialValid(address holder) public view returns (bool) {
         return activeCredentialOf(holder) != bytes32(0);
     }
 
-    /// @notice Who licensed this holder (issuer of the live credential), or 0x0.
-    ///         ProductTransfer only lets you ship to wallets you licensed.
-    function licensedBy(address holder) external view returns (address) {
-        bytes32 id = activeCredentialOf(holder);
-        return id == bytes32(0) ? address(0) : _creds[id].issuer;
+    /// @notice Holder has a live licence from this specific issuer.
+    ///         ProductTransfer only lets you ship to wallets YOU licensed.
+    function isLicensedBy(address holder, address issuer) public view returns (bool) {
+        return activeCredentialFrom(issuer, holder) != bytes32(0);
+    }
+
+    /// @notice State of the licence between issuer and holder (latest credential decides).
+    function pairState(address issuer, address holder) external view returns (State) {
+        return _stateOf(_byPair[issuer][holder]);
+    }
+
+    /// @notice Best state across all of a holder's credentials.
+    function holderState(address holder) external view returns (State) {
+        return _stateOf(_byHolder[holder]);
     }
 
     /// @notice Detailed check with a human-readable failure reason.
@@ -142,10 +165,34 @@ contract CredentialRegistry {
         return (true, "");
     }
 
+    // ── Validity (at a past moment) — used by TraceabilityAudit ─────────────
+    /// @notice Did `issuer` hold a non-revoked, non-expired licence for `holder` at time `t`?
+    ///         (Direct check only; cascading trust is evaluated for "now" separately.)
+    function wasLicensedAt(address issuer, address holder, uint256 t) external view returns (bool) {
+        return _anyLiveAt(_byPair[issuer][holder], t);
+    }
+
+    /// @notice Did the holder hold any non-revoked, non-expired licence at time `t`?
+    function hadLicenceAt(address holder, uint256 t) external view returns (bool) {
+        return _anyLiveAt(_byHolder[holder], t);
+    }
+
     // ── Views ───────────────────────────────────────────────────────────────
     function getCredential(bytes32 credentialId) external view returns (Credential memory) { return _creds[credentialId]; }
     function getCredentialsByHolder(address holder) external view returns (bytes32[] memory) { return _byHolder[holder]; }
     function getCredentialsByIssuer(address issuer) external view returns (bytes32[] memory) { return _byIssuer[issuer]; }
+    function totalCredentials() external view returns (uint256) { return _all.length; }
+
+    /// @notice Every credential ever issued plus whether each is live right now.
+    ///         Lets the public explorer draw the whole trust hierarchy in one call.
+    function getAllCredentials() external view returns (Credential[] memory list, bool[] memory active) {
+        list = new Credential[](_all.length);
+        active = new bool[](_all.length);
+        for (uint256 i = 0; i < _all.length; i++) {
+            list[i] = _creds[_all[i]];
+            active[i] = isCredentialActive(_all[i]);
+        }
+    }
 
     /// @notice What licence `issuer` would give `holder`; reverts with the reason if not allowed.
     function licenceTypeFor(address issuer, address holder) external view returns (string memory) {
@@ -153,6 +200,30 @@ contract CredentialRegistry {
     }
 
     // ── Internal ────────────────────────────────────────────────────────────
+    function _latestActive(bytes32[] storage ids) internal view returns (bytes32) {
+        for (uint256 i = ids.length; i > 0; i--) {
+            if (isCredentialActive(ids[i - 1])) return ids[i - 1];
+        }
+        return bytes32(0);
+    }
+
+    function _stateOf(bytes32[] storage ids) internal view returns (State) {
+        if (ids.length == 0) return State.None;
+        if (_latestActive(ids) != bytes32(0)) return State.Active;
+        Credential storage c = _creds[ids[ids.length - 1]];
+        if (c.revoked) return State.Revoked;
+        if (block.timestamp > c.expiresAt) return State.Expired;
+        return State.Suspended;
+    }
+
+    function _anyLiveAt(bytes32[] storage ids, uint256 t) internal view returns (bool) {
+        for (uint256 i = 0; i < ids.length; i++) {
+            Credential storage c = _creds[ids[i]];
+            if (c.issuedAt <= t && t <= c.expiresAt && (c.revokedAt == 0 || c.revokedAt > t)) return true;
+        }
+        return false;
+    }
+
     function _licenceTypeFor(address issuer, address holder) internal view returns (string memory) {
         if (didRegistry.hasRole(issuer, "LocalGovt")) {
             require(trustRegistry.isAuthorizedIssuer(issuer), "CredentialRegistry: Local Government is not licensed by rootGA");

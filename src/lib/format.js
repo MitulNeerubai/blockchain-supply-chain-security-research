@@ -33,8 +33,27 @@ export const LICENSES = {
 export const ISSUER_OF = { Manufacturer: 'LocalGovt', Distributor: 'Manufacturer', Retailer: 'Distributor' }
 export const LICENSE_LABEL = { ManufacturingLicense: 'Manufacturing License', TradeLicense: 'Trade License' }
 
-export const STATUS = ['In stock', 'In transit', 'Delivered', 'Cancelled']
-export const STATUS_PILL = ['pill-green', 'pill-amber', 'pill-blue', 'pill-red']
+export const STATUS = ['In stock', 'In transit', 'Delivered', 'Deleted']
+export const STATUS_PILL = ['pill-green', 'pill-amber', 'pill-blue', 'pill-gray']
+/** TransferRecord.kind */
+export const KIND = { SHIP: 0, RETURN: 1, RECALL: 2, RECLAIM: 3 }
+
+/** Product form rules — must match ProductTransfer.createProduct. */
+export const PRODUCT_LIMITS = { name: 80, batch: 40, description: 200, maxQty: 1_000_000_000 }
+export function validateProduct(f) {
+  const e = {}
+  const name = (f.name ?? '').trim(), batch = (f.batch ?? '').trim(), desc = (f.description ?? '').trim()
+  if (!name) e.name = 'Product name is required.'
+  else if (name.length > PRODUCT_LIMITS.name) e.name = `Max ${PRODUCT_LIMITS.name} characters.`
+  if (!batch) e.batch = 'Batch number is required.'
+  else if (batch.length > PRODUCT_LIMITS.batch) e.batch = `Max ${PRODUCT_LIMITS.batch} characters.`
+  if (!desc) e.description = 'Description is required.'
+  else if (desc.length > PRODUCT_LIMITS.description) e.description = `Max ${PRODUCT_LIMITS.description} characters.`
+  const q = String(f.quantity ?? '').trim()
+  if (!/^\d+$/.test(q) || Number(q) < 1) e.quantity = 'Enter a whole number of at least 1.'
+  else if (Number(q) > PRODUCT_LIMITS.maxQty) e.quantity = 'Quantity is too large.'
+  return e
+}
 
 export function validateCompanyName(raw) {
   const n = (raw ?? '').trim()

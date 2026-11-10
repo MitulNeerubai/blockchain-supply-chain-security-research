@@ -99,10 +99,28 @@ export async function loadIdentity(address) {
   }
 }
 
+const CRED_STATE = ['none', 'active', 'revoked', 'expired', 'suspended']
+export const credStateName = n => CRED_STATE[Number(n)] || 'none'
+
 function credStatus(c, active) {
   if (c.revoked) return 'revoked'
   if (Number(c.expiresAt) < nowSec()) return 'expired'
   return active ? 'active' : 'suspended'
+}
+
+function normCred(c, active) {
+  return {
+    id: c.id,
+    issuer: c.issuer,
+    holder: c.holder,
+    type: c.credType,
+    issuedAt: Number(c.issuedAt),
+    expiresAt: Number(c.expiresAt),
+    revoked: c.revoked,
+    revokedAt: Number(c.revokedAt),
+    active,
+    status: credStatus(c, active),
+  }
 }
 
 export async function loadCredentials(ids) {
@@ -110,28 +128,28 @@ export async function loadCredentials(ids) {
   const unique = [...new Set(ids.map(String))]
   const rows = await Promise.all(unique.map(async id => {
     const [c, active] = await Promise.all([cred.getCredential(id), cred.isCredentialActive(id)])
-    return {
-      id,
-      issuer: c.issuer,
-      holder: c.holder,
-      type: c.credType,
-      issuedAt: Number(c.issuedAt),
-      expiresAt: Number(c.expiresAt),
-      revoked: c.revoked,
-      active,
-      status: credStatus(c, active),
-    }
+    return normCred(c, active)
   }))
   return rows.sort((a, b) => b.issuedAt - a.issuedAt)
 }
 
-/** The wallet's licence: the live one if any, otherwise the most recent. */
-export async function loadMyLicence(address) {
+/** Keep only the newest credential per issuer→holder pair (the one that decides the relationship). */
+export function latestPerPair(creds) {
+  const m = new Map()
+  for (const c of [...creds].sort((a, b) => b.issuedAt - a.issuedAt)) {
+    const k = c.issuer.toLowerCase() + '>' + c.holder.toLowerCase()
+    const cur = m.get(k)
+    if (!cur || (c.active && !cur.active)) m.set(k, c)
+  }
+  return [...m.values()]
+}
+
+/** All licences this wallet holds — one per issuer (newest / live one). */
+export async function loadMyLicences(address) {
   const { cred } = reader()
-  const [ids, activeId] = await Promise.all([cred.getCredentialsByHolder(address), cred.activeCredentialOf(address)])
-  if (!ids.length) return null
-  const all = await loadCredentials(ids)
-  return all.find(c => c.id === activeId) || all[0]
+  const ids = await cred.getCredentialsByHolder(address)
+  if (!ids.length) return []
+  return latestPerPair(await loadCredentials(ids))
 }
 
 export async function loadIssuedBy(address) {
@@ -139,7 +157,26 @@ export async function loadIssuedBy(address) {
   return loadCredentials(await cred.getCredentialsByIssuer(address))
 }
 
-function normProduct(p) {
+/** Public: every credential + LG authorisations — the whole trust network in 3 calls. */
+export async function loadNetwork() {
+  const { cred, trust } = reader()
+  const [[list, active], rootGA, issuers] = await Promise.all([cred.getAllCredentials(), trust.rootGA(), trust.getIssuers()])
+  const auth = await Promise.all(issuers.map(a => Promise.all([trust.isAuthorizedIssuer(a), trust.authorizedAt(a)])))
+  return {
+    rootGA,
+    creds: list.map((c, i) => normCred(c, active[i])),
+    lg: Object.fromEntries(issuers.map((a, i) => [a.toLowerCase(), { authorized: auth[i][0], since: Number(auth[i][1]) }])),
+  }
+}
+
+function normRecord(r) {
+  return {
+    from: r.from, to: r.to, timestamp: Number(r.timestamp),
+    confirmed: r.confirmed, cancelled: r.cancelled, kind: Number(r.kind), note: r.note,
+  }
+}
+
+function normProduct(p, last) {
   return {
     id: p.id.toString(),
     name: p.name,
@@ -152,24 +189,42 @@ function normProduct(p) {
     quantity: p.quantity.toString(),
     description: p.description,
     batchNumber: p.batchNumber,
+    last: last && Number(last.timestamp) > 0 ? normRecord(last) : null,
   }
 }
 
+const CHUNK = 150
 export async function loadProducts(ids) {
   const unique = [...new Set(ids.map(i => i.toString()))]
   if (!unique.length) return []
   const { pt } = reader()
-  const rows = await pt.getProducts(unique)
-  return rows.filter(p => p.id !== 0n).map(normProduct).sort((a, b) => Number(b.id) - Number(a.id))
+  const out = []
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const part = unique.slice(i, i + CHUNK)
+    const [rows, lasts] = await Promise.all([pt.getProducts(part), pt.getLastRecords(part)])
+    rows.forEach((p, j) => { if (p.id !== 0n) out.push(normProduct(p, lasts[j])) })
+  }
+  return out.sort((a, b) => Number(b.id) - Number(a.id))
+}
+
+/** Public: every product on the chain (no wallet). */
+export async function loadAllProducts() {
+  const total = Number(await reader().pt.totalProducts())
+  return loadProducts(Array.from({ length: total }, (_, i) => i + 1))
 }
 
 export async function loadProduct(id) {
   const { pt } = reader()
   const [p, h] = await Promise.all([pt.getProduct(id), pt.getTransferHistory(id)])
-  return {
-    ...normProduct(p),
-    history: h.map(r => ({ from: r.from, to: r.to, timestamp: Number(r.timestamp), confirmed: r.confirmed, cancelled: r.cancelled })),
-  }
+  const history = h.map(normRecord)
+  return { ...normProduct(p, h[h.length - 1]), history }
+}
+
+/** For each product: can it be called back right now, and why. */
+export async function loadReclaimable(products) {
+  const { pt } = reader()
+  const rows = await Promise.all(products.map(p => pt.reclaimable(p.id).then(([ok, reason]) => [p.id, { ok, reason }]).catch(() => [p.id, { ok: false, reason: '' }])))
+  return Object.fromEntries(rows)
 }
 
 export async function loadAudit(id) {
@@ -177,6 +232,8 @@ export async function loadAudit(id) {
   const r = await ta.auditProduct(id)
   return {
     verified: r.verified,
+    currentlyValid: r.currentlyValid,
+    currentNote: r.currentNote,
     failReason: r.failReason,
     productName: r.productName,
     manufacturer: r.manufacturer,

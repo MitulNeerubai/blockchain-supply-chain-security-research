@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { short, ROLE_LABEL } from '../lib/format'
+import { useNetwork, useProfile } from '../lib/app'
 
 export function Spinner({ lg }) { return <span className={`spinner${lg ? ' lg' : ''}`} /> }
 
@@ -134,20 +135,41 @@ export function CopyButton({ text, label = 'Copy' }) {
   )
 }
 
-/** Company name + role colour + short address with copy. */
-export function Entity({ address, name, role, sub, size = 34 }) {
+/** Coloured dot for a licence / actor state. */
+const DOT_TITLE = { active: 'Active', pending: 'Pending', suspended: 'Suspended', revoked: 'Revoked', expired: 'Expired', unknown: 'Unknown' }
+export function StatusDot({ state, title }) {
+  return <span className={`sdot sdot-${state || 'unknown'}`} title={title || DOT_TITLE[state] || state} aria-label={title || DOT_TITLE[state]} />
+}
+
+/** Company name + role colour + live licence dot. Click opens the company profile. */
+export function Entity({ address, name, role, sub, size = 34, noLink, noStatus }) {
+  const net = useNetwork()
+  const profile = useProfile()
   const label = name || short(address)
+  const st = !noStatus && address ? net?.statusOf(address) : null
+  const clickable = !noLink && address
+  const Tag = clickable ? 'button' : 'div'
   return (
     <div className="entity">
       <div className="avatar" style={{ width: size, height: size, background: role ? `var(--role-${role})` : undefined }}>
         {(label || '?').replace(/[^A-Za-z0-9]/g, '').charAt(0).toUpperCase() || '?'}
+        {st && <StatusDot state={st.state} title={st.label} />}
       </div>
       <div style={{ minWidth: 0 }}>
-        <div className="entity-name">{label}</div>
+        <Tag type={clickable ? 'button' : undefined} className={`entity-name${clickable ? ' link' : ''}`} onClick={clickable ? () => profile.open(address) : undefined} title={clickable ? 'Open company profile' : undefined}>
+          {label}
+        </Tag>
         <div className="entity-addr">{sub ?? <>{short(address)}<CopyButton text={address} label="Copy address" /></>}</div>
       </div>
     </div>
   )
+}
+
+/** Inline company link (name only) that opens the profile. */
+export function CompanyLink({ address, children }) {
+  const profile = useProfile()
+  if (!address) return children ?? null
+  return <button type="button" className="link-btn" onClick={() => profile.open(address)}>{children}</button>
 }
 
 // ── Toasts ──────────────────────────────────────────────────────────────────

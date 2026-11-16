@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EXPLORER, CHAIN_NAME, loadAudit, loadProduct, reader } from '../lib/chain'
 import { go, useDirectory, useNetwork } from '../lib/app'
-import { KIND, errMsg, fmtDate } from '../lib/format'
+import { KIND, errMsg, fmtDate, isPublic } from '../lib/format'
 import { Alert, Button, Card, CompanyLink, CredPill, Entity, Loading, Pill } from '../components/ui'
 import { QRModal, StatusPill, Timeline, locationOf } from '../components/Products'
 
@@ -76,11 +76,11 @@ export default function Verify({ productId }) {
                 <div className="kv">
                   <div className="kv-item"><div className="kv-k">Manufacturer</div><div className="kv-v"><CompanyLink address={p.manufacturer}>{d.name(p.manufacturer)}</CompanyLink></div></div>
                   <div className="kv-item"><div className="kv-k">Where it is now</div><div className="kv-v">{locationOf(p, null, d.name)}</div></div>
-                  <div className="kv-item"><div className="kv-k">Created</div><div className="kv-v">{fmtDate(p.createdAt)}</div></div>
-                  <div className="kv-item"><div className="kv-k">Quantity</div><div className="kv-v">{p.quantity}</div></div>
-                  {p.batchNumber && <div className="kv-item"><div className="kv-k">Batch</div><div className="kv-v">{p.batchNumber}</div></div>}
+                  {isPublic(p, 'created') && <div className="kv-item"><div className="kv-k">Created</div><div className="kv-v">{fmtDate(p.createdAt)}</div></div>}
+                  {isPublic(p, 'quantity') && <div className="kv-item"><div className="kv-k">Quantity</div><div className="kv-v">{p.quantity}</div></div>}
+                  {isPublic(p, 'batch') && p.batchNumber && <div className="kv-item"><div className="kv-k">Batch</div><div className="kv-v">{p.batchNumber}</div></div>}
                 </div>
-                {p.description && <p className="muted">{p.description}</p>}
+                {isPublic(p, 'description') && p.description && <p className="muted">{p.description}</p>}
                 {state.reclaim?.ok && (
                   <Alert type="warning" title={p.status === 1 ? 'This shipment cannot be delivered' : 'This product is due to be called back'}>
                     {state.reclaim.reason.replace(/^[^:]*:\s*/, '').replace(/^./, c => c.toUpperCase())}. {p.status === 1 ? 'It returns to the sender automatically, or the sender can call it back.' : 'The upstream company can call it back.'}
@@ -102,7 +102,7 @@ export default function Verify({ productId }) {
               </div>
             </Card>
 
-            <Card title="Chain of custody" subtitle="Every shipment, return, recall and call-back — with the reason when there is one"><Timeline product={p} /></Card>
+            <Card title="Chain of custody" subtitle="Every shipment, return, recall and call-back — with the reason when there is one"><Timeline product={p} hideCreated={!isPublic(p, 'created')} /></Card>
           </>
         )}
         <p className="footer-note">

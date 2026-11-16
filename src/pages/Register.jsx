@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { getContracts, reader } from '../lib/chain'
 import { apiHealth } from '../lib/api'
 import { ROLE_ICON, ROLE_LABEL, errMsg, short, validateCompanyName } from '../lib/format'
-import { Alert, Button, Field } from '../components/ui'
+import { Alert, Button, CopyButton, Field } from '../components/ui'
 import { EmailVerifier } from '../components/EmailSettings'
 import { NextSteps } from '../components/Onboarding'
 
+// Local Governments are not listed: the Root Governance Authority adds them directly.
 const ROLE_INFO = {
-  LocalGovt:    'Licensed by the Root Authority. Issues Manufacturing Licenses to Manufacturers.',
   Manufacturer: 'Creates products. Licenses Distributors and ships products to them.',
   Distributor:  'Receives products from the Manufacturers that licensed it (one or several). Licenses Retailers and ships to them.',
   Retailer:     'Receives products from the Distributors that licensed it and verifies the full chain.',
@@ -79,6 +79,11 @@ export default function Register({ address, signer, onRegistered }) {
           </div>
 
           {role && <NextSteps role={role} />}
+
+          <p className="faint small">
+            Local Government office? You do not register here. Send this wallet address to the Root Governance Authority and they will add you:
+            {' '}<code>{short(address)}</code> <CopyButton text={address} label="Copy address" />
+          </p>
 
           <Field
             label="2. Company name"

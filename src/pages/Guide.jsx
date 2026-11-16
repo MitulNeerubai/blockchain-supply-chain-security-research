@@ -2,20 +2,23 @@ import { useState } from 'react'
 import { CHAIN_ID, CHAIN_NAME, IS_BESU, RPC_URL } from '../lib/chain'
 import { go } from '../lib/app'
 import { LIFECYCLE, ROLE_GUIDE } from '../lib/guide'
-import { ROLE_ICON, ROLE_LABEL } from '../lib/format'
+import { GITHUB_URL, ROLE_ICON, ROLE_LABEL } from '../lib/format'
 import { Button, Card, CopyButton, Tabs } from '../components/ui'
 
 const VISITOR = [
-  ['Overview', '/', 'Live numbers, the newest products, recent on-chain activity and the trust map.'],
+  ['Home', '/', 'Type a product number to check it. Three live numbers link to the product and company lists.'],
   ['Products', '/products', 'Every product ever created: search by name, batch, number or company; filter by status. Click a row for its full history.'],
-  ['Companies', '/companies', 'Every registered account with a coloured status dot (green active · amber pending/suspended · red revoked · grey expired). Click any company name anywhere to open its profile.'],
+  ['Companies', '/companies', 'Every registered account with a coloured status dot (green active · amber pending/suspended · red revoked · grey expired) and the full trust map. Click any company name anywhere to open its profile.'],
   ['Verify', '/verify', 'Type a product number or scan its QR code to see whether the chain Manufacturer → Distributor → Retailer is verified.'],
 ]
 
 const FAQ = [
-  ['Do I need a wallet to look around?', 'No. Overview, Products, Companies, Verify and this guide read the blockchain directly. A wallet (MetaMask) is only needed to take actions as a company.'],
+  ['Do I need a wallet to look around?', 'No. Home, Products, Companies, Verify and this guide read the blockchain directly. A wallet (MetaMask) is only needed to take actions as a company.'],
   ['A manufacturer created a product by mistake — can it be deleted?', 'Yes, from the Manufacturer dashboard → Products → “🗑 Delete”, as long as the product is still in the manufacturer’s stock and was never accepted by a distributor. The record stays on-chain marked “Deleted”, but the product can no longer move.'],
   ['Which product fields are required?', 'Name, quantity (≥ 1), batch number and description. The form shows what is missing and the smart contract rejects incomplete products as well.'],
+  ['Can a manufacturer keep some details off the public page?', 'Yes. When creating a product the manufacturer ticks which optional details (quantity, batch number, description, created date) appear on the page a QR scan opens. The product name, the manufacturer, the verification result and the chain of custody are always shown. This is a display choice: the unticked details are still stored on the blockchain, and the companies that handle the product still see them.'],
+  ['How does a Local Government join?', 'It does not register itself. It gives its wallet address to the Root Governance Authority, which adds it with a name and a region and grants its licence. After that the office signs in with MetaMask and lands directly on its dashboard.'],
+  ['What if a Local Government has to be replaced?', 'The Root Governance Authority uses “Transfer” to hand all of its Manufacturing Licences to another licensed Local Government, with the same expiry dates, and then revokes the old one. No Manufacturer, Distributor or Retailer is suspended. If an LG is revoked without a transfer, everyone below it is suspended until the licences are transferred or the LG is re-granted.'],
   ['Can a distributor work for several manufacturers?', 'Yes. Each manufacturer issues its own Trade License. The distributor dashboard shows one box per manufacturer, and products of a manufacturer can only be shipped while the licence from that manufacturer is active.'],
   ['How do returns work?', 'A retailer can send a product back to the distributor that shipped it, and a distributor back to the manufacturer (“↩ Return”). A reason is required and stored on-chain. The receiver accepts it under Incoming (distributor) or Returns (manufacturer).'],
   ['What happens when a licence is revoked or expires?', 'Shipments to that company can no longer be accepted. An in-transit shipment reverts to the sender with a note such as “licence of X was revoked” — automatically when the keeper service is running, or with the “⤺ Call back” button. A product already held by that company can be called back upstream the same way. A manufacturer’s own stock is frozen (not destroyed) until its licence is restored.'],
@@ -71,7 +74,7 @@ export default function Guide() {
                 <div className="kv-item"><div className="kv-k">Symbol</div><div className="kv-v">TRUST</div></div>
               </div>
             </li>
-            <li><b>Register your company</b>: choose a role, a unique company name and (optionally) a notification email. This creates your DID on-chain.</li>
+            <li><b>Register your company</b>: choose a role (Manufacturer, Distributor or Retailer), a unique company name and (optionally) a notification email. This creates your DID on-chain. Local Governments are added by the Root Governance Authority instead.</li>
             <li><b>Follow the checklist</b>: right after registering, a pop-up explains your next steps. The same list stays in the “Getting started” bar at the top of your dashboard and ticks itself off as you go.</li>
           </ol>
         </Card>
@@ -108,6 +111,20 @@ export default function Guide() {
             {FAQ.map(([q, a]) => (
               <details key={q}><summary>{q}</summary><p className="muted">{a}</p></details>
             ))}
+          </div>
+        </Card>
+
+        <Card title="7 · Get the code" subtitle="The whole project is open source: smart contracts, tests, this website and the deployment scripts.">
+          <div className="row-between">
+            <div>
+              <a className="mono small" href={GITHUB_URL} target="_blank" rel="noreferrer">{GITHUB_URL.replace('https://', '')}</a>
+              <div className="faint small" style={{ marginTop: 4 }}>Download it or clone it, then follow the README to run it on your own computer or deploy your own copy.</div>
+            </div>
+            <div className="row">
+              <CopyButton text={`git clone ${GITHUB_URL}.git`} label="Copy clone command" />
+              <a className="btn btn-secondary" href={`${GITHUB_URL}/archive/refs/heads/main.zip`}>⬇ Download ZIP</a>
+              <a className="btn btn-primary" href={GITHUB_URL} target="_blank" rel="noreferrer">Open on GitHub ↗</a>
+            </div>
           </div>
         </Card>
 

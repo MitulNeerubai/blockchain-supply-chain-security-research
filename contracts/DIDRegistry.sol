@@ -6,9 +6,10 @@ import "./TrustRegistry.sol";
 import "./AuditLog.sol";
 
 /// @title DIDRegistry — on-chain identities with a unique company name
-/// @notice Every participant (LocalGovt, Manufacturer, Distributor, Retailer)
-///         self-registers one DID. The company name is stored on-chain and is
-///         unique (case-insensitive), so no two wallets can use the same name.
+/// @notice Manufacturers, Distributors and Retailers self-register one DID.
+///         Local Governments do NOT self-register: rootGA adds them (wallet,
+///         name and region) with `registerLocalGovt`. The company name is stored
+///         on-chain and is unique (case-insensitive).
 contract DIDRegistry {
     TrustRegistry public immutable trustRegistry;
     AuditLog      public immutable auditLog;
@@ -20,6 +21,7 @@ contract DIDRegistry {
         address controller;
         uint256 createdAt;
         bool    active;
+        string  region;      // Local Governments only (e.g. "Jackson County, MO"); empty for everyone else
     }
 
     mapping(address => DIDDocument) private _docs;
@@ -37,26 +39,43 @@ contract DIDRegistry {
     }
 
     // ── Registration ────────────────────────────────────────────────────────
+    /// @notice Self-registration for Manufacturers, Distributors and Retailers.
     function registerDID(string calldata role, string calldata companyName) external {
-        require(bytes(_docs[msg.sender].did).length == 0, "DIDRegistry: already registered");
         require(msg.sender != trustRegistry.rootGA(), "DIDRegistry: rootGA does not register a DID");
         require(isValidRole(role), "DIDRegistry: invalid role");
+        require(!_eq(role, "LocalGovt"), "DIDRegistry: Local Governments are added by the Root Authority");
+        _register(msg.sender, role, companyName, "");
+    }
+
+    /// @notice rootGA creates the DID of a Local Government on its behalf.
+    ///         (The LG licence itself is granted in TrustRegistry.authorizeIssuer.)
+    function registerLocalGovt(address wallet, string calldata name, string calldata region) external {
+        require(msg.sender == trustRegistry.rootGA(), "DIDRegistry: only rootGA can add a Local Government");
+        require(wallet != address(0) && wallet != msg.sender, "DIDRegistry: invalid Local Government wallet");
+        bytes memory r = bytes(region);
+        require(r.length >= 2 && r.length <= 64 && r[0] != 0x20 && r[r.length - 1] != 0x20,
+            "DIDRegistry: region is required (2-64 characters)");
+        _register(wallet, "LocalGovt", name, region);
+    }
+
+    function _register(address who, string memory role, string calldata companyName, string memory region) internal {
+        require(bytes(_docs[who].did).length == 0, "DIDRegistry: already registered");
         _validateName(companyName);
 
         bytes32 key = nameKey(companyName);
         require(nameOwner[key] == address(0), "DIDRegistry: company name already taken");
 
-        string memory did = string.concat("did:besu:", Strings.toHexString(msg.sender));
-        _docs[msg.sender] = DIDDocument({
+        string memory did = string.concat("did:besu:", Strings.toHexString(who));
+        _docs[who] = DIDDocument({
             did: did, role: role, companyName: companyName,
-            controller: msg.sender, createdAt: block.timestamp, active: true
+            controller: who, createdAt: block.timestamp, active: true, region: region
         });
-        didToAddress[did] = msg.sender;
-        nameOwner[key]    = msg.sender;
-        _controllers.push(msg.sender);
+        didToAddress[did] = who;
+        nameOwner[key]    = who;
+        _controllers.push(who);
 
-        auditLog.logAction(msg.sender, "DID_REGISTERED", string.concat("role=", role, " company=", companyName));
-        emit DIDRegistered(msg.sender, did, role, companyName, block.timestamp);
+        auditLog.logAction(who, "DID_REGISTERED", string.concat("role=", role, " company=", companyName));
+        emit DIDRegistered(who, did, role, companyName, block.timestamp);
     }
 
     function deactivateDID() external {
@@ -78,6 +97,7 @@ contract DIDRegistry {
 
     function getRole(address controller) external view returns (string memory) { return _docs[controller].role; }
     function getCompanyName(address controller) external view returns (string memory) { return _docs[controller].companyName; }
+    function getRegion(address controller) external view returns (string memory) { return _docs[controller].region; }
 
     /// @notice True if the wallet has an active DID with exactly this role.
     function hasRole(address controller, string memory role) public view returns (bool) {

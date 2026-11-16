@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react'
 import { loadAllProducts } from '../lib/chain'
 import { go, useDirectory, useLoad } from '../lib/app'
-import { STATUS, fmtDate } from '../lib/format'
+import { STATUS, fmtDate, isPublic } from '../lib/format'
 import { Alert, Button, Card, CompanyLink, Empty, Loading } from '../components/ui'
 import { StatusPill, locationOf } from '../components/Products'
 import { FilterChips } from '../components/ProductList'
 
 export const useAllProducts = () => useLoad(loadAllProducts, [])
 
-/** Compact product table, shared by the Overview and Products pages. */
+/** Compact product table, used by the Products page. */
 export function ProductTable({ rows }) {
   const d = useDirectory()
   return (
@@ -21,13 +21,17 @@ export function ProductTable({ rows }) {
               <td className="pid">{p.id}</td>
               <td>
                 <a href={`#/product/${p.id}`} className="strong" onClick={e => e.stopPropagation()}>{p.name}</a>
-                <div className="faint small">Batch {p.batchNumber || '—'} · Qty {p.quantity}</div>
+                {(isPublic(p, 'batch') || isPublic(p, 'quantity')) && (
+                  <div className="faint small">
+                    {[isPublic(p, 'batch') && `Batch ${p.batchNumber || '—'}`, isPublic(p, 'quantity') && `Qty ${p.quantity}`].filter(Boolean).join(' · ')}
+                  </div>
+                )}
                 {p.last?.note && p.last.note !== 'Cancelled by sender' && <div className="small note-inline">“{p.last.note}”</div>}
               </td>
               <td onClick={e => e.stopPropagation()}><CompanyLink address={p.manufacturer}>{d.name(p.manufacturer)}</CompanyLink></td>
               <td className="small">{locationOf(p, null, d.name)}</td>
               <td><StatusPill status={p.status} /></td>
-              <td className="nowrap small">{fmtDate(p.createdAt)}</td>
+              <td className="nowrap small">{isPublic(p, 'created') ? fmtDate(p.createdAt) : '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -50,7 +54,7 @@ export default function AllProducts() {
     return list.filter(p =>
       (status === 'all' || p.status === Number(status)) &&
       (!mf || p.manufacturer.toLowerCase() === mf) &&
-      (!term || p.id === term.replace('#', '') || p.name.toLowerCase().includes(term) || (p.batchNumber || '').toLowerCase().includes(term) ||
+      (!term || p.id === term.replace('#', '') || p.name.toLowerCase().includes(term) || (isPublic(p, 'batch') && (p.batchNumber || '').toLowerCase().includes(term)) ||
         d.name(p.manufacturer).toLowerCase().includes(term) || d.name(p.holder).toLowerCase().includes(term)))
   }, [list, q, status, mf, d])
 

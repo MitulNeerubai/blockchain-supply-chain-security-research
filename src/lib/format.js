@@ -15,6 +15,44 @@ export const nowSec = () => Math.floor(Date.now() / 1000)
 export const daysLeft = ts => Math.ceil((Number(ts) - nowSec()) / DAY)
 
 export const ROLES = ['LocalGovt', 'Manufacturer', 'Distributor', 'Retailer']
+/** Roles a company can register itself. Local Governments are added by the Root Authority. */
+export const SELF_ROLES = ['Manufacturer', 'Distributor', 'Retailer']
+export const GITHUB_URL = 'https://github.com/MitulNeerubai/blockchain-supply-chain-security-research'
+
+/** Suggestions for the Local Government region field (free text is allowed too). */
+export const MO_REGIONS = [
+  'Jackson County, MO', 'Clay County, MO', 'Platte County, MO', 'Cass County, MO', 'St. Louis County, MO', 'St. Louis City, MO',
+  'St. Charles County, MO', 'Jefferson County, MO', 'Greene County, MO', 'Boone County, MO', 'Cole County, MO', 'Buchanan County, MO',
+]
+
+/**
+ * Optional product details a Manufacturer can show or hide on the public
+ * product page (the page a QR scan opens). Bits match ProductTransfer.publicFields.
+ * Name, manufacturer, verification result and chain of custody are always shown.
+ */
+export const PUBLIC_FIELDS = [
+  { bit: 1, key: 'quantity', label: 'Quantity' },
+  { bit: 2, key: 'batch', label: 'Batch number' },
+  { bit: 4, key: 'description', label: 'Description' },
+  { bit: 8, key: 'created', label: 'Created date' },
+]
+export const ALL_PUBLIC = 15
+const BIT = Object.fromEntries(PUBLIC_FIELDS.map(f => [f.key, f.bit]))
+/** Is this optional detail public for the product? */
+export const isPublic = (p, key) => ((p?.publicFields ?? ALL_PUBLIC) & BIT[key]) !== 0
+/** Labels of the optional details the public page shows / hides. */
+export const publicLabels = (mask, shown = true) => PUBLIC_FIELDS.filter(f => ((mask & f.bit) !== 0) === shown).map(f => f.label)
+/**
+ * Who sees every detail regardless of the Manufacturer's choice: the Root
+ * Authority, Local Governments, and any company that made or handled the product.
+ * (`viewer` = { address, role } or null for the public.)
+ */
+export function seesAll(p, viewer) {
+  if (!viewer?.address) return false
+  if (viewer.role === 'RootGA' || viewer.role === 'LocalGovt') return true
+  return sameAddr(p.manufacturer, viewer.address) || sameAddr(p.holder, viewer.address) || sameAddr(p.pending, viewer.address) ||
+    (p.history || []).some(h => sameAddr(h.from, viewer.address) || sameAddr(h.to, viewer.address))
+}
 export const ROLE_LABEL = {
   RootGA: 'Root Governance Authority',
   LocalGovt: 'Local Government',
@@ -53,6 +91,13 @@ export function validateProduct(f) {
   if (!/^\d+$/.test(q) || Number(q) < 1) e.quantity = 'Enter a whole number of at least 1.'
   else if (Number(q) > PRODUCT_LIMITS.maxQty) e.quantity = 'Quantity is too large.'
   return e
+}
+
+export function validateRegion(raw) {
+  const n = (raw ?? '').trim()
+  if (!n) return 'Enter the region this Local Government covers.'
+  if (n.length < 2 || n.length > 64) return 'Use 2–64 characters.'
+  return ''
 }
 
 export function validateCompanyName(raw) {

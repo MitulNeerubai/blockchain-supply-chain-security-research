@@ -25,7 +25,7 @@ const expiry = async (days = 365) => (await time.latest()) + days * DAY;
 async function fullChain() {
   const f = await deployAll();
   const { lg, mf, dt, rt, did, trust, cred } = f;
-  await did.connect(lg).registerDID("LocalGovt", "City of Kansas");
+  await did.registerLocalGovt(lg, "City of Kansas", "Jackson County, MO");
   await did.connect(mf).registerDID("Manufacturer", "Acme Corp");
   await did.connect(dt).registerDID("Distributor", "FastShip");
   await did.connect(rt).registerDID("Retailer", "CornerShop");
@@ -38,7 +38,7 @@ async function fullChain() {
 
 let batchSeq = 0; // every test product gets its own batch number (unique per manufacturer)
 async function createProduct(pt, mf, name = "Widget", batch = `BATCH-${++batchSeq}`) {
-  const tx = await pt.connect(mf).createProduct(name, "", 10, "desc", batch);
+  const tx = await pt.connect(mf).createProduct(name, "", 10, "desc", batch, 15);
   const rc = await tx.wait();
   return rc.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
     .find(e => e?.name === "ProductCreated").args.id;
@@ -105,7 +105,7 @@ describe("CredentialRegistry — licence chain", () => {
 
   it("LG must be licensed by rootGA first", async () => {
     const { did, cred, lg, mf } = await deployAll();
-    await did.connect(lg).registerDID("LocalGovt", "City");
+    await did.registerLocalGovt(lg, "City", "Jackson County, MO");
     await did.connect(mf).registerDID("Manufacturer", "Acme");
     await expect(cred.connect(lg).issueCredential(mf, await expiry()))
       .to.be.revertedWith("CredentialRegistry: Local Government is not licensed by rootGA");
@@ -190,9 +190,9 @@ describe("ProductTransfer", () => {
 
   it("only Manufacturers with a valid licence can create products", async () => {
     const { pt, dt, did, mf2 } = await fullChain();
-    await expect(pt.connect(dt).createProduct("X", "", 1, "d", "B1")).to.be.revertedWith("ProductTransfer: only Manufacturers can create products");
+    await expect(pt.connect(dt).createProduct("X", "", 1, "d", "B1", 15)).to.be.revertedWith("ProductTransfer: only Manufacturers can create products");
     await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");
-    await expect(pt.connect(mf2).createProduct("X", "", 1, "d", "B1")).to.be.revertedWith("ProductTransfer: no valid credential");
+    await expect(pt.connect(mf2).createProduct("X", "", 1, "d", "B1", 15)).to.be.revertedWith("ProductTransfer: no valid credential");
   });
 
   it("can only ship to partners you licensed", async () => {
@@ -259,12 +259,12 @@ describe("v4 — required fields, delete, returns, call-back, multi-manufacturer
   it("rejects products with missing / blank required fields", async () => {
     const { pt, mf } = await fullChain();
     const NAME = "ProductTransfer: product name is required (max 80 characters)";
-    await expect(pt.connect(mf).createProduct("", "", 1, "d", "B")).to.be.revertedWith(NAME);
-    await expect(pt.connect(mf).createProduct(" ", "", 1, "d", "B")).to.be.revertedWith(NAME);
-    await expect(pt.connect(mf).createProduct("X".repeat(81), "", 1, "d", "B")).to.be.revertedWith(NAME);
-    await expect(pt.connect(mf).createProduct("X", "", 1, "d", "")).to.be.revertedWith("ProductTransfer: batch number is required (max 40 characters)");
-    await expect(pt.connect(mf).createProduct("X", "", 1, "", "B")).to.be.revertedWith("ProductTransfer: description is required (max 200 characters)");
-    await expect(pt.connect(mf).createProduct("X", "", 0, "d", "B")).to.be.revertedWith("ProductTransfer: quantity must be between 1 and 1,000,000,000");
+    await expect(pt.connect(mf).createProduct("", "", 1, "d", "B", 15)).to.be.revertedWith(NAME);
+    await expect(pt.connect(mf).createProduct(" ", "", 1, "d", "B", 15)).to.be.revertedWith(NAME);
+    await expect(pt.connect(mf).createProduct("X".repeat(81), "", 1, "d", "B", 15)).to.be.revertedWith(NAME);
+    await expect(pt.connect(mf).createProduct("X", "", 1, "d", "", 15)).to.be.revertedWith("ProductTransfer: batch number is required (max 40 characters)");
+    await expect(pt.connect(mf).createProduct("X", "", 1, "", "B", 15)).to.be.revertedWith("ProductTransfer: description is required (max 200 characters)");
+    await expect(pt.connect(mf).createProduct("X", "", 0, "d", "B", 15)).to.be.revertedWith("ProductTransfer: quantity must be between 1 and 1,000,000,000");
   });
 
   it("manufacturer can delete a product created by mistake, but not once it left stock", async () => {
@@ -402,8 +402,8 @@ describe("v4 — required fields, delete, returns, call-back, multi-manufacturer
     const DUP = "ProductTransfer: you already used this batch number";
     const a = await createProduct(pt, mf, "First", "ACME-001");
     expect(await pt.batchUsedBy(mf, "acme-001")).to.equal(a);
-    await expect(pt.connect(mf).createProduct("Second", "", 1, "d", "ACME-001")).to.be.revertedWith(DUP);
-    await expect(pt.connect(mf).createProduct("Second", "", 1, "d", "acme-001")).to.be.revertedWith(DUP);
+    await expect(pt.connect(mf).createProduct("Second", "", 1, "d", "ACME-001", 15)).to.be.revertedWith(DUP);
+    await expect(pt.connect(mf).createProduct("Second", "", 1, "d", "acme-001", 15)).to.be.revertedWith(DUP);
     // another manufacturer may use the same batch number
     await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");
     await cred.connect(lg).issueCredential(mf2, await expiry());
@@ -424,5 +424,139 @@ describe("v4 — required fields, delete, returns, call-back, multi-manufacturer
     const [ra, rb] = await pt.getLastRecords([a, b]);
     expect(ra.to).to.equal(rt.address); expect(rb.from).to.equal(ethers.ZeroAddress);
     expect(await pt.shipperTo(a, rt)).to.equal(dt.address);
+  });
+});
+
+describe("v5 — rootGA adds Local Governments, licence transfer, public product fields", () => {
+  it("Local Governments cannot self-register; only rootGA adds them (with a region)", async () => {
+    const { did, lg, mf, outsider } = await deployAll();
+    await expect(did.connect(lg).registerDID("LocalGovt", "City of Kansas"))
+      .to.be.revertedWith("DIDRegistry: Local Governments are added by the Root Authority");
+    await expect(did.connect(outsider).registerLocalGovt(lg, "City of Kansas", "Jackson County, MO"))
+      .to.be.revertedWith("DIDRegistry: only rootGA can add a Local Government");
+    await expect(did.registerLocalGovt(lg, "City of Kansas", ""))
+      .to.be.revertedWith("DIDRegistry: region is required (2-64 characters)");
+    await expect(did.registerLocalGovt(ethers.ZeroAddress, "City of Kansas", "Jackson County, MO"))
+      .to.be.revertedWith("DIDRegistry: invalid Local Government wallet");
+
+    await did.registerLocalGovt(lg, "City of Kansas", "Jackson County, MO");
+    const d = await did.getDID(lg);
+    expect(d.role).to.equal("LocalGovt");
+    expect(d.companyName).to.equal("City of Kansas");
+    expect(d.region).to.equal("Jackson County, MO");
+    expect(d.controller).to.equal(lg.address);
+    expect(await did.getRegion(lg)).to.equal("Jackson County, MO");
+    expect(await did.hasRole(lg, "LocalGovt")).to.be.true;
+
+    await expect(did.registerLocalGovt(lg, "Another Name", "Greene County, MO")).to.be.revertedWith("DIDRegistry: already registered");
+    await expect(did.registerLocalGovt(outsider, "city of kansas", "Greene County, MO")).to.be.revertedWith("DIDRegistry: company name already taken");
+    // everyone else still self-registers, with an empty region
+    await did.connect(mf).registerDID("Manufacturer", "Acme Corp");
+    expect((await did.getDID(mf)).region).to.equal("");
+  });
+
+  /** fullChain + a second, licensed Local Government (signer `outsider`). */
+  async function twoLGs() {
+    const f = await fullChain();
+    await f.did.registerLocalGovt(f.outsider, "St. Louis County Office", "St. Louis County, MO");
+    await f.trust.authorizeIssuer(f.outsider, "LocalGovt");
+    return { ...f, lg2: f.outsider };
+  }
+
+  it("rootGA transfers an LG's licences to another LG — nobody below is suspended", async () => {
+    const f = await twoLGs();
+    const { cred, trust, did, pt, lg, lg2, mf, dt, rt, mf2 } = f;
+    await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");
+    const shortExpiry = await expiry(30);
+    await cred.connect(lg).issueCredential(mf2, shortExpiry);
+    const oldCred = await cred.getCredential(await cred.activeCredentialFrom(lg, mf));
+    const id = await createProduct(pt, mf);
+
+    await expect(cred.transferLicences(lg, lg2, 10)).to.emit(cred, "LicencesTransferred").withArgs(lg.address, lg2.address, 2n, 0n);
+
+    // both Manufacturers are now licensed by the new LG, with the SAME expiry dates
+    expect(await cred.isLicensedBy(mf, lg)).to.be.false;
+    expect(await cred.isLicensedBy(mf, lg2)).to.be.true;
+    expect(await cred.isLicensedBy(mf2, lg2)).to.be.true;
+    const moved = await cred.getCredential(await cred.activeCredentialFrom(lg2, mf));
+    expect(moved.expiresAt).to.equal(oldCred.expiresAt);
+    expect(moved.credType).to.equal("ManufacturingLicense");
+    expect((await cred.getCredential(await cred.activeCredentialFrom(lg2, mf2))).expiresAt).to.equal(BigInt(shortExpiry));
+    expect(await cred.pairState(lg, mf)).to.equal(2n); // Revoked (closed by the transfer)
+
+    // now the old LG can be revoked without touching anyone
+    await trust.revokeIssuer(lg);
+    for (const w of [mf, dt, rt, mf2]) expect(await cred.isCredentialValid(w)).to.be.true;
+    expect((await pt.reclaimable(id))[0]).to.be.false;
+    // and the chain keeps working end to end
+    await pt.connect(mf).shipTo(id, dt); await pt.connect(dt).confirmReceipt(id);
+    await pt.connect(dt).shipTo(id, rt); await pt.connect(rt).confirmReceipt(id);
+    const a = await f.ta.auditProduct(id);
+    expect(a.verified).to.be.true; expect(a.currentlyValid).to.be.true;
+  });
+
+  it("transfer also rescues the chain AFTER an LG was revoked, and works in batches", async () => {
+    const { cred, trust, did, lg, lg2, mf, dt, rt, mf2 } = await twoLGs();
+    await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");
+    await cred.connect(lg).issueCredential(mf2, await expiry());
+    await trust.revokeIssuer(lg);
+    for (const w of [mf, dt, rt, mf2]) expect(await cred.isCredentialValid(w)).to.be.false;
+
+    await expect(cred.transferLicences(lg, lg2, 1)).to.emit(cred, "LicencesTransferred").withArgs(lg.address, lg2.address, 1n, 1n);
+    expect(await cred.isCredentialValid(mf)).to.be.true;
+    expect(await cred.isCredentialValid(mf2)).to.be.false;
+    await expect(cred.transferLicences(lg, lg2, 1)).to.emit(cred, "LicencesTransferred").withArgs(lg.address, lg2.address, 1n, 0n);
+    for (const w of [mf, dt, rt, mf2]) expect(await cred.isCredentialValid(w)).to.be.true;
+    // nothing left to move
+    await expect(cred.transferLicences(lg, lg2, 10)).to.emit(cred, "LicencesTransferred").withArgs(lg.address, lg2.address, 0n, 0n);
+  });
+
+  it("transfer keeps the licence history unbroken for the audit", async () => {
+    const f = await twoLGs();
+    const { cred, pt, ta, lg, lg2, mf, dt, rt } = f;
+    const before = await createProduct(pt, mf);
+    await cred.transferLicences(lg, lg2, 10);
+    const after = await createProduct(pt, mf);
+    for (const id of [before, after]) {
+      await pt.connect(mf).shipTo(id, dt); await pt.connect(dt).confirmReceipt(id);
+      await pt.connect(dt).shipTo(id, rt); await pt.connect(rt).confirmReceipt(id);
+      expect((await ta.auditProduct(id)).verified).to.be.true;
+    }
+  });
+
+  it("a Manufacturer the new LG already licenses is not licensed twice", async () => {
+    const { cred, lg, lg2, mf } = await twoLGs();
+    await cred.connect(lg2).issueCredential(mf, await expiry(10));
+    const own = await cred.activeCredentialFrom(lg2, mf);
+    await cred.transferLicences(lg, lg2, 10);
+    expect(await cred.activeCredentialFrom(lg2, mf)).to.equal(own);
+    expect(await cred.isLicensedBy(mf, lg)).to.be.false;
+    expect((await cred.getCredentialsByIssuer(lg2)).length).to.equal(1);
+  });
+
+  it("transfer is rootGA-only and needs a licensed receiving LG", async () => {
+    const { cred, trust, did, lg, lg2, mf, mf2 } = await twoLGs();
+    await expect(cred.connect(lg).transferLicences(lg, lg2, 10)).to.be.revertedWith("CredentialRegistry: only rootGA can transfer licences");
+    await expect(cred.transferLicences(lg, lg, 10)).to.be.revertedWith("CredentialRegistry: choose a different Local Government");
+    await expect(cred.transferLicences(mf, lg2, 10)).to.be.revertedWith("CredentialRegistry: source is not a Local Government");
+    await expect(cred.transferLicences(lg, mf, 10)).to.be.revertedWith("CredentialRegistry: the receiving Local Government is not licensed by rootGA");
+    await did.registerLocalGovt(mf2, "Unlicensed Office", "Greene County, MO"); // registered, never licensed
+    await expect(cred.transferLicences(lg, mf2, 10)).to.be.revertedWith("CredentialRegistry: the receiving Local Government is not licensed by rootGA");
+    await trust.revokeIssuer(lg2);
+    await expect(cred.transferLicences(lg, lg2, 10)).to.be.revertedWith("CredentialRegistry: the receiving Local Government is not licensed by rootGA");
+  });
+
+  it("manufacturer chooses which optional details the public product page shows", async () => {
+    const { pt, mf } = await fullChain();
+    const make = async (mask, batch) => {
+      const rc = await (await pt.connect(mf).createProduct("Widget", "", 5, "desc", batch, mask)).wait();
+      return rc.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } }).find(e => e?.name === "ProductCreated").args.id;
+    };
+    expect((await pt.getProduct(await make(0, "PF-0"))).publicFields).to.equal(0n);   // show nothing optional
+    expect((await pt.getProduct(await make(5, "PF-5"))).publicFields).to.equal(5n);   // quantity + description
+    expect((await pt.getProduct(await make(15, "PF-15"))).publicFields).to.equal(15n); // everything
+    expect((await pt.getProduct(await make(255, "PF-255"))).publicFields).to.equal(15n); // unknown bits dropped
+    const [p] = await pt.getProducts([1]);
+    expect(p.publicFields).to.equal(0n);
   });
 });

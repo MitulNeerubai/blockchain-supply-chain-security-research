@@ -35,6 +35,10 @@ library Custody {
         uint256 quantity;
         string  description;
         string  batchNumber;
+        /// Which optional details the public product page (QR scan) shows, chosen by
+        /// the Manufacturer at creation: 1 = quantity, 2 = batch number, 4 = description,
+        /// 8 = created date. Display preference only: the data itself stays on-chain.
+        uint8   publicFields;
     }
 
     // ── Permission checks (revert with the reason) ─────────────────────────

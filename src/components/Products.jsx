@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { loadAudit, loadProduct, reader } from '../lib/chain'
 import { go, useDirectory, useSession, useTx } from '../lib/app'
-import { KIND, STATUS, STATUS_PILL, errMsg, fmtDate, fmtDateTime, sameAddr } from '../lib/format'
+import { ALL_PUBLIC, KIND, STATUS, STATUS_PILL, errMsg, fmtDate, fmtDateTime, isPublic, publicLabels, sameAddr, seesAll } from '../lib/format'
 import { Alert, Button, Card, CompanyLink, Entity, Loading, Modal, CopyButton } from './ui'
 
 export const verifyUrl = id => `${window.location.origin}${window.location.pathname}#/product/${id}`
@@ -39,9 +39,9 @@ const KIND_TITLE = {
   [KIND.RECLAIM]: () => 'Called back (licence lapsed)',
 }
 
-export function Timeline({ product }) {
+export function Timeline({ product, hideCreated }) {
   const d = useDirectory()
-  const items = [{ key: 'c', dot: '', title: 'Created', from: product.manufacturer, at: product.createdAt }]
+  const items = [{ key: 'c', dot: '', title: 'Created', from: product.manufacturer, at: hideCreated ? null : product.createdAt }]
   product.history.forEach((h, i) => {
     items.push({
       key: i,
@@ -86,6 +86,11 @@ export function QRModal({ product, onClose }) {
         </div>
         {src ? <img className="qr-img" src={src} alt={`QR code for product ${product.id}`} /> : <Loading />}
         <p className="muted small">Anyone can scan this to verify the full chain of custody — no wallet needed.</p>
+        <p className="faint small">
+          {(product.publicFields ?? ALL_PUBLIC) === ALL_PUBLIC
+            ? 'The public page shows every product detail.'
+            : <>The public page hides: <b>{publicLabels(product.publicFields, false).join(', ').toLowerCase()}</b> (chosen by the manufacturer).</>}
+        </p>
         <div className="row" style={{ justifyContent: 'center' }}>
           <div className="copy-box grow">{url}</div><CopyButton text={url} label="Copy link" />
         </div>
@@ -115,7 +120,7 @@ export function HistoryModal({ id, onClose }) {
   )
 }
 
-export function AuditVerdict({ audit, compact }) {
+export function AuditVerdict({ audit, compact, hideCreated }) {
   const d = useDirectory()
   if (!audit) return null
   if (!audit.verified) return <Alert type="error" title="Chain not verified">{audit.failReason}</Alert>
@@ -130,7 +135,7 @@ export function AuditVerdict({ audit, compact }) {
           <div className="chain-node" key={role}>
             <div className="chain-node-role" style={{ color: `var(--role-${role})` }}>{role}</div>
             <div style={{ marginTop: 6 }}><Entity address={addr} name={d.name(addr)} role={role} size={28} /></div>
-            <div className="faint small" style={{ marginTop: 6 }}>{verb} {fmtDate(at)}</div>
+            {!(hideCreated && role === 'Manufacturer') && <div className="faint small" style={{ marginTop: 6 }}>{verb} {fmtDate(at)}</div>}
           </div>
         ))}
       </div>
@@ -163,6 +168,9 @@ export function ProductLookup() {
   const reclaim = () => run('reclaim', () => s.write.pt.reclaimProduct(state.product.id), { success: 'Product called back.', onDone: search })
 
   const p = state.product
+  // Companies that never handled the product see what the public sees.
+  const full = p ? seesAll(p, s) : false
+  const vis = k => full || isPublic(p, k)
   return (
     <div className="stack">
       <Card title="Product lookup" subtitle="Search any product to see where it is, its full history and whether its chain verifies.">
@@ -181,10 +189,10 @@ export function ProductLookup() {
               <div className="kv">
                 <div className="kv-item"><div className="kv-k">Manufacturer</div><div className="kv-v"><CompanyLink address={p.manufacturer}>{d.name(p.manufacturer)}</CompanyLink></div></div>
                 <div className="kv-item"><div className="kv-k">Location</div><div className="kv-v">{locationOf(p, s?.address, d.name)}</div></div>
-                <div className="kv-item"><div className="kv-k">Quantity</div><div className="kv-v">{p.quantity}</div></div>
-                {p.batchNumber && <div className="kv-item"><div className="kv-k">Batch</div><div className="kv-v">{p.batchNumber}</div></div>}
+                {vis('quantity') && <div className="kv-item"><div className="kv-k">Quantity</div><div className="kv-v">{p.quantity}</div></div>}
+                {vis('batch') && p.batchNumber && <div className="kv-item"><div className="kv-k">Batch</div><div className="kv-v">{p.batchNumber}</div></div>}
               </div>
-              {p.description && <p className="muted">{p.description}</p>}
+              {vis('description') && p.description && <p className="muted">{p.description}</p>}
               {state.reclaim?.ok && (
                 <Alert type="warning" title="Licence lapsed — product can be called back"
                   action={s && <Button size="sm" variant="secondary" loading={busy === 'reclaim'} onClick={reclaim}>Call back</Button>}>
@@ -192,11 +200,11 @@ export function ProductLookup() {
                 </Alert>
               )}
               <div className="divider" />
-              <Timeline product={p} />
+              <Timeline product={p} hideCreated={!vis('created')} />
             </div>
           </Card>
           <Card title="Chain-of-custody audit" subtitle="Run by the TraceabilityAudit contract">
-            <AuditVerdict audit={state.audit} />
+            <AuditVerdict audit={state.audit} hideCreated={!vis('created')} />
           </Card>
         </div>
       )}

@@ -4,7 +4,7 @@ import { ROLE_ICON, ROLE_LABEL, short } from '../lib/format'
 import { CopyButton, RoleBadge } from './ui'
 
 const NAV = [
-  ['home', '/', 'Overview'],
+  ['home', '/', 'Home'],
   ['products', '/products', 'Products'],
   ['companies', '/companies', 'Companies'],
   ['guide', '/guide', 'How it works'],

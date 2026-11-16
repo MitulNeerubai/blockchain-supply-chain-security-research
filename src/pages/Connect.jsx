@@ -17,7 +17,7 @@ export default function Connect({ onConnect }) {
         <div className="auth-hero">
           <div className="auth-logo">🔗</div>
           <h1 className="auth-title">Participant sign-in</h1>
-          <p className="auth-sub">For companies that create, ship, sell or license products. Just browsing? You don't need a wallet — use <a href="#/">Overview</a>, <a href="#/products">Products</a> or <a href="#/verify">Verify</a>.</p>
+          <p className="auth-sub">For companies that create, ship, sell or license products. Just browsing? You don't need a wallet — use <a href="#/">Home</a>, <a href="#/products">Products</a> or <a href="#/verify">Verify</a>.</p>
         </div>
         <div className="card-body stack">
           <div className="feature-list">

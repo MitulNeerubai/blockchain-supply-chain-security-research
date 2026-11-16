@@ -6,30 +6,34 @@
 
 export const ROLE_GUIDE = {
   RootGA: {
-    intro: 'You are the root of trust. Every licence in the system traces back to a Local Government licence that you grant.',
+    intro: 'You are the root of trust. Only you can add Local Governments, and every licence in the system traces back to the LG licence that you grant.',
     steps: [
-      { id: 'lg', title: 'Grant a Local Government licence', tab: 'lg',
-        do: 'Open “Local Governments”, find a company registered as Local Government and click “Grant LG licence”.',
-        happens: 'TrustRegistry.authorizeIssuer marks the LG as trusted. From now on it can license Manufacturers.',
+      { id: 'lg', title: 'Add a Local Government', tab: 'lg',
+        do: 'Open “Local Governments” and fill in the form: the wallet address the office gave you, its name and its region. Click “Add Local Government” and confirm twice in MetaMask.',
+        happens: 'DIDRegistry.registerLocalGovt creates the DID with its region, then TrustRegistry.authorizeIssuer marks the LG as trusted. From now on it can license Manufacturers.',
         done: f => f.lgLicensed > 0 },
       { id: 'monitor', title: 'Watch the network', tab: 'audit',
         do: 'Use the Audit trail tab and the public Trust map to see every licence and product event.',
         happens: 'Every action is written to the AuditLog contract and can never be edited.',
         done: f => f.lgLicensed > 0 && f.products > 0 },
+      { id: 'transfer', title: 'Replace a Local Government', tab: 'lg', optional: true,
+        do: 'Click “⇄ Transfer” next to the LG, choose the Local Government that takes over and confirm. Tick the box to revoke the old LG right after.',
+        happens: 'CredentialRegistry.transferLicences re-issues every Manufacturing Licence from the new LG with the same expiry date. Nobody below is suspended.',
+        done: () => false },
       { id: 'revoke', title: 'Revoke when needed', tab: 'lg', optional: true,
-        do: 'Click “Revoke licence” next to an LG.',
-        happens: 'Cascading revocation: that LG’s Manufacturers, their Distributors and Retailers are suspended instantly. Re-granting restores them.',
+        do: 'Click “Revoke licence” next to an LG. If it still has Manufacturers you are warned first and can transfer them instead.',
+        happens: 'Cascading revocation: that LG’s Manufacturers, their Distributors and Retailers are suspended instantly. Re-granting, or transferring the licences afterwards, restores them.',
         done: () => false },
     ],
   },
 
   LocalGovt: {
-    intro: 'You license Manufacturers in your jurisdiction. You need the Root Governance Authority to approve you first.',
+    intro: 'You license the Manufacturers of your region. The Root Governance Authority added you and grants your licence.',
     steps: [
-      { id: 'did', title: 'Register your company (DID)', do: 'Done when you registered with the Local Government role.',
-        happens: 'DIDRegistry stored did:besu:<your wallet>, your role and your unique company name.', done: () => true },
-      { id: 'root', title: 'Get approved by the Root Authority', tab: 'mf',
-        do: 'Nothing to click — tell the Root Governance Authority your company name. Your banner turns green when approved.',
+      { id: 'did', title: 'Added by the Root Authority', do: 'Done — the Root Governance Authority registered your wallet with your name and region. Local Governments do not register themselves.',
+        happens: 'DIDRegistry.registerLocalGovt stored did:besu:<your wallet>, your name and your region.', done: () => true },
+      { id: 'root', title: 'Hold an LG licence', tab: 'mf',
+        do: 'Nothing to click — the Root Governance Authority grants it when it adds you. Your banner is green while the licence is active.',
         happens: 'rootGA calls TrustRegistry.authorizeIssuer(your wallet).', done: f => f.licensed },
       { id: 'issue', title: 'License a Manufacturer', tab: 'mf',
         do: 'Open “Manufacturers”, pick a registered Manufacturer, choose how many days the licence is valid and click “Issue”.',
@@ -52,7 +56,7 @@ export const ROLE_GUIDE = {
         do: 'Open “Distributors”, pick a registered Distributor and issue a Trade License. A Distributor may also work for other Manufacturers.',
         happens: 'A TradeLicense credential links you → that Distributor. You can only ship to Distributors you licensed.', done: f => f.partners > 0 },
       { id: 'create', title: 'Create a product', tab: 'products',
-        do: 'Fill in name, quantity, batch number and description (all required) and click “Create product”. Made a mistake? Delete it while it is still in your stock.',
+        do: 'Fill in name, quantity, batch number and description (all required), tick which of these details customers may see when they scan the QR code, and click “Create product”. Made a mistake? Delete it while it is still in your stock.',
         happens: 'ProductTransfer mints an ERC-721 token in your name with status “In stock”.', done: f => f.products > 0 },
       { id: 'ship', title: 'Ship it to a Distributor', tab: 'products',
         do: 'Under the product choose a Distributor and click “Ship →”. You can cancel until they accept.',
@@ -117,7 +121,7 @@ export function progress(role, facts) {
 
 /** Lifecycle of a product — used on the public Guide page. */
 export const LIFECYCLE = [
-  ['🏭', 'Created', 'A licensed Manufacturer mints the product (name, quantity, batch, description are required). It can be deleted only while it never left the Manufacturer.'],
+  ['🏭', 'Created', 'A licensed Manufacturer mints the product (name, quantity, batch, description are required) and chooses which details the public QR page shows. It can be deleted only while it never left the Manufacturer.'],
   ['🚚', 'Shipped → accepted', 'The Manufacturer ships to a Distributor it licensed. Custody moves only when the Distributor accepts. Same again from Distributor to a Retailer it licensed.'],
   ['🏪', 'Delivered', 'When a Retailer accepts, the product is Delivered. The public page shows the verified chain Manufacturer → Distributor → Retailer.'],
   ['↩', 'Returned', 'A Retailer can send a product back to its Distributor, and a Distributor back to its Manufacturer — always with a reason that is stored on-chain.'],

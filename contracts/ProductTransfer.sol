@@ -63,9 +63,11 @@ contract ProductTransfer is ERC721 {
     // ── Create / delete ─────────────────────────────────────────────────────
     /// @notice Name, quantity, batch number and description are all required.
     ///         A batch number is unique per manufacturer (case-insensitive).
+    /// @param publicFields  bit mask of the optional details shown on the public
+    ///                      product page: 1 quantity, 2 batch number, 4 description, 8 created date
     function createProduct(
         string calldata name, string calldata ipfsCID, uint256 quantity,
-        string calldata description, string calldata batchNumber
+        string calldata description, string calldata batchNumber, uint8 publicFields
     ) external returns (uint256 id) {
         require(didRegistry.hasRole(msg.sender, "Manufacturer"), "ProductTransfer: only Manufacturers can create products");
         require(credRegistry.isCredentialValid(msg.sender), "ProductTransfer: no valid credential");
@@ -78,7 +80,8 @@ contract ProductTransfer is ERC721 {
         _products[id] = Custody.Product({
             id: id, name: name, ipfsCID: ipfsCID, manufacturer: msg.sender,
             currentHolder: msg.sender, pendingRecipient: address(0), status: Custody.Status.InStock,
-            createdAt: block.timestamp, quantity: quantity, description: description, batchNumber: batchNumber
+            createdAt: block.timestamp, quantity: quantity, description: description, batchNumber: batchNumber,
+            publicFields: publicFields & 15
         });
         _manufacturerProducts[msg.sender].push(id);
         _indexHolder(msg.sender, id);

@@ -25,7 +25,7 @@ export function TrustTree({ highlight, showUnlicensed = true }) {
     return (
       <li key={addr + (edge?.id || '')} className={sameAddr(addr, highlight) ? 'me' : ''}>
         <div className="tree-row">
-          <Entity address={addr} name={who?.company} role={who?.role} size={26} sub={ROLE_LABEL[who?.role]} />
+          <Entity address={addr} name={who?.company} role={who?.role} size={26} sub={who?.region ? `${ROLE_LABEL[who.role]} · ${who.region}` : ROLE_LABEL[who?.role]} />
           {edge?.lgState && <span className="tree-edge"><Pill tone={{ active: 'green', revoked: 'red', pending: 'amber' }[edge.lgState]} dot>{{ active: 'Licensed by Root', revoked: 'Revoked by Root', pending: 'Awaiting Root' }[edge.lgState]}</Pill></span>}
           {edge && !edge.lgState && <span className="tree-edge"><CredPill status={edge.status} /><span className="faint small">until {fmtDate(edge.expiresAt)}</span></span>}
           {multi > 1 && <span className="faint small">works with {multi} {who.role === 'Distributor' ? 'manufacturers' : 'distributors'}</span>}
@@ -138,6 +138,7 @@ export function ProfileModal({ address, onClose }) {
             <div className="kv">
               <div className="kv-item"><div className="kv-k">DID</div><div className="kv-v mono small">{who.did} <CopyButton text={who.did} /></div></div>
               <div className="kv-item"><div className="kv-k">Registered</div><div className="kv-v">{fmtDate(who.createdAt)}</div></div>
+              {who.region && <div className="kv-item"><div className="kv-k">Region</div><div className="kv-v">{who.region}</div></div>}
             </div>
           )}
 

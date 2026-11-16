@@ -484,3 +484,26 @@ textarea.input { resize: vertical; min-height: 60px; }
 .subgroup { border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--surface); padding: 10px; }
 .subgroup + .subgroup { margin-top: 10px; }
 .subgroup-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 2px 4px 10px; }
+
+/* Simple landing page: one action (verify a product) */
+.home { display: flex; flex-direction: column; align-items: center; }
+.home-hero { width: 100%; max-width: 720px; margin-top: clamp(16px, 7vh, 72px); padding: clamp(24px, 5vw, 44px) clamp(18px, 4vw, 40px); text-align: center; border-radius: 18px;
+  background: radial-gradient(700px 320px at 50% 0%, #dbe7ff, transparent), linear-gradient(180deg, #ffffff, #f4f7ff); border: 1px solid var(--border); }
+.home-hero .hero-title { font-size: clamp(28px, 5vw, 40px); margin-top: 0; }
+.home-hero .hero-sub { margin: 12px auto 0; max-width: 480px; font-size: 16px; }
+.home-verify { display: flex; gap: 10px; margin: 26px auto 0; max-width: 460px; }
+.home-input { flex: 1; min-width: 0; font-size: 18px; padding: 13px 16px; text-align: center; }
+.home-note { margin-top: 12px; }
+.home-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: 100%; max-width: 720px; margin-top: 20px; }
+.home-stat { flex: 1 1 160px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 16px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); }
+.home-stat:hover { border-color: #84adff; text-decoration: none; }
+.home-stat-value { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+.home-stat-label { font-size: 13px; color: var(--text-2); }
+.home-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 22px; font-size: 14px; color: var(--text-3); }
+@media (max-width: 520px) { .home-verify { flex-direction: column; } }
+
+/* Tick boxes (public QR details, transfer options) */
+.check-row { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 8px 0 6px; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
+.check input:disabled, .check input:disabled + span { cursor: not-allowed; opacity: .6; }

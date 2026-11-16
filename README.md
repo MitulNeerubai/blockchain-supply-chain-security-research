@@ -20,7 +20,7 @@ rootGA (deployer)
 | Role | Registers as | Licensed by | Can license | Products |
 |---|---|---|---|---|
 | **rootGA** | — (deployer wallet) | — | Local Governments | — |
-| **Local Government** | `LocalGovt` | rootGA | Manufacturers | — |
+| **Local Government** | added by rootGA (wallet, name, region) — cannot self-register | rootGA | Manufacturers | — |
 | **Manufacturer** | `Manufacturer` | Local Government | Distributors | create, ship to *its* Distributors, recall |
 | **Distributor** | `Distributor` | Manufacturer | Retailers | accept, ship to *its* Retailers, recall from them |
 | **Retailer** | `Retailer` | Distributor | — | accept, verify chain, share QR |
@@ -31,6 +31,9 @@ Rules enforced **on-chain**:
 - **Role-locked licensing** — each role can only license the next role down; the licence type follows from the holder's role.
 - **One live licence per wallet** — a new licence supersedes the old one.
 - **Cascading revocation** — a licence is only valid while its issuer is still trusted. Revoking an LG suspends its Manufacturers, their Distributors and their Retailers; re-granting restores them.
+- **Replacing a Local Government without disruption** — rootGA calls `transferLicences(from, to, limit)`: every live Manufacturing License is re-issued by the receiving LG with the same expiry date, then the old LG is revoked. Nobody below is suspended.
+- **Local Governments are added by rootGA only** — with a name and a region (for example `Jackson County, MO`). `registerDID` rejects the `LocalGovt` role.
+- **Public product details are the Manufacturer's choice** — `publicFields` (quantity, batch number, description, created date) is set when the product is created and decides what the public QR page shows. It is a display preference: the data itself is still on-chain.
 - **Licensed handoffs** — `shipTo` only accepts a recipient whose live licence *you* issued. Every handoff is two-step (ship → recipient confirms).
 - **No side-door transfers** — direct ERC-721 `transferFrom` is blocked.
 
@@ -39,9 +42,9 @@ Rules enforced **on-chain**:
 | Contract | Purpose |
 |---|---|
 | `TrustRegistry` | rootGA grants / revokes LG licences |
-| `DIDRegistry` | `registerDID(role, companyName)`, unique names, full directory (`getAllDIDs`) |
-| `CredentialRegistry` | `issueCredential(holder, expiresAt)`, revoke, cascading validity, `licensedBy(holder)` |
-| `ProductTransfer` | ERC-721 products: create, ship, confirm, cancel, force-recall, reclaim |
+| `DIDRegistry` | `registerDID(role, companyName)` for Manufacturers/Distributors/Retailers, `registerLocalGovt(wallet, name, region)` (rootGA only), unique names, full directory (`getAllDIDs`) |
+| `CredentialRegistry` | `issueCredential(holder, expiresAt)`, revoke, cascading validity, `licensedBy(holder)`, `transferLicences(from, to, limit)` (rootGA only) |
+| `ProductTransfer` | ERC-721 products: create (with `publicFields`), ship, confirm, cancel, force-recall, reclaim |
 | `TraceabilityAudit` | Read-only MF → DT → RT chain verification |
 | `AuditLog` | Append-only on-chain log written by the other contracts |
 

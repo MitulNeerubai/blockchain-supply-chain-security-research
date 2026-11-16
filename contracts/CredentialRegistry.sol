@@ -16,7 +16,9 @@ import "./AuditLog.sol";
 ///         for two Manufacturers) but holds at most one live licence per issuer.
 ///         A credential is only valid while its issuer is still trusted
 ///         (cascading revocation): revoking an LG suspends its Manufacturers,
-///         their Distributors and their Retailers.
+///         their Distributors and their Retailers. To retire an LG without that
+///         disruption, rootGA first hands its licences to another licensed LG
+///         (`transferLicences`) and only then revokes it.
 contract CredentialRegistry {
     struct Credential {
         bytes32 id;
@@ -48,6 +50,7 @@ contract CredentialRegistry {
 
     event CredentialIssued(bytes32 indexed credentialId, address indexed issuer, address indexed holder, string credType, uint256 expiresAt);
     event CredentialRevoked(bytes32 indexed credentialId, address indexed revokedBy, address indexed holder);
+    event LicencesTransferred(address indexed fromIssuer, address indexed toIssuer, uint256 moved, uint256 remaining);
 
     constructor(address _trustRegistry, address _didRegistry, address _auditLog) {
         trustRegistry = TrustRegistry(_trustRegistry);
@@ -68,30 +71,66 @@ contract CredentialRegistry {
         require(activeCredentialFrom(msg.sender, holder) == bytes32(0),
             "CredentialRegistry: you already gave this company an active licence. Revoke it first.");
 
+        return _issue(msg.sender, holder, credType, expiresAt);
+    }
+
+    /// @notice rootGA hands the live Manufacturing Licences of one Local Government
+    ///         to another LG that is currently licensed. Each licence is re-issued by
+    ///         `to` with the SAME expiry date and the old one is closed in the same
+    ///         transaction, so the Manufacturers (and everyone below them) never lose
+    ///         their standing. Works whether `from` is still licensed or already revoked.
+    /// @param limit  max licences to move in this call (block gas limit); call again
+    ///               while `remaining` is not zero.
+    function transferLicences(address from, address to, uint256 limit) external returns (uint256 moved, uint256 remaining) {
+        require(msg.sender == trustRegistry.rootGA(), "CredentialRegistry: only rootGA can transfer licences");
+        require(from != to, "CredentialRegistry: choose a different Local Government");
+        require(keccak256(bytes(didRegistry.getRole(from))) == keccak256("LocalGovt"), "CredentialRegistry: source is not a Local Government");
+        require(didRegistry.hasRole(to, "LocalGovt") && trustRegistry.isAuthorizedIssuer(to),
+            "CredentialRegistry: the receiving Local Government is not licensed by rootGA");
+
+        bytes32[] storage ids = _byIssuer[from];
+        for (uint256 i = 0; i < ids.length; i++) {
+            Credential storage c = _creds[ids[i]];
+            if (c.revoked || block.timestamp > c.expiresAt) continue;
+            if (moved == limit) { remaining++; continue; }
+            c.revoked   = true;
+            c.revokedAt = block.timestamp;
+            emit CredentialRevoked(ids[i], msg.sender, c.holder);
+            // The receiving LG may already licence this Manufacturer itself — then nothing to re-issue.
+            if (activeCredentialFrom(to, c.holder) == bytes32(0)) _issue(to, c.holder, c.credType, c.expiresAt);
+            moved++;
+        }
+
+        auditLog.logAction(msg.sender, "LICENCES_TRANSFERRED",
+            string.concat("from=", Strings.toHexString(from), " to=", Strings.toHexString(to), " count=", Strings.toString(moved)));
+        emit LicencesTransferred(from, to, moved, remaining);
+    }
+
+    function _issue(address issuer, address holder, string memory credType, uint256 expiresAt) internal returns (bytes32 credentialId) {
         // Supersede this issuer's stale (suspended/expired but not revoked) credentials for the holder.
-        bytes32[] storage old = _byPair[msg.sender][holder];
+        bytes32[] storage old = _byPair[issuer][holder];
         for (uint256 i = 0; i < old.length; i++) {
             Credential storage o = _creds[old[i]];
             if (!o.revoked) {
                 o.revoked = true;
                 o.revokedAt = block.timestamp;
-                emit CredentialRevoked(old[i], msg.sender, holder);
+                emit CredentialRevoked(old[i], issuer, holder);
             }
         }
 
-        credentialId = keccak256(abi.encodePacked(msg.sender, holder, credType, _nonce++, block.timestamp));
+        credentialId = keccak256(abi.encodePacked(issuer, holder, credType, _nonce++, block.timestamp));
         _creds[credentialId] = Credential({
-            id: credentialId, issuer: msg.sender, holder: holder, credType: credType,
+            id: credentialId, issuer: issuer, holder: holder, credType: credType,
             issuedAt: block.timestamp, expiresAt: expiresAt, revoked: false, revokedAt: 0
         });
-        _byIssuer[msg.sender].push(credentialId);
+        _byIssuer[issuer].push(credentialId);
         _byHolder[holder].push(credentialId);
-        _byPair[msg.sender][holder].push(credentialId);
+        _byPair[issuer][holder].push(credentialId);
         _all.push(credentialId);
 
-        auditLog.logAction(msg.sender, "CREDENTIAL_ISSUED",
+        auditLog.logAction(issuer, "CREDENTIAL_ISSUED",
             string.concat("credId=", Strings.toHexString(uint256(credentialId), 32), " type=", credType, " holder=", Strings.toHexString(holder)));
-        emit CredentialIssued(credentialId, msg.sender, holder, credType, expiresAt);
+        emit CredentialIssued(credentialId, issuer, holder, credType, expiresAt);
     }
 
     function revokeCredential(bytes32 credentialId) external {

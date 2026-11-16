@@ -77,6 +77,7 @@ export async function loadDirectory() {
       company: d.companyName,
       createdAt: Number(d.createdAt),
       active: d.active,
+      region: d.region || '',
     })
   }
   return map
@@ -96,6 +97,7 @@ export async function loadIdentity(address) {
     did: doc.did,
     active: doc.active,
     createdAt: Number(doc.createdAt),
+    region: doc.region || '',
   }
 }
 
@@ -189,6 +191,7 @@ function normProduct(p, last) {
     quantity: p.quantity.toString(),
     description: p.description,
     batchNumber: p.batchNumber,
+    publicFields: Number(p.publicFields ?? 15),
     last: last && Number(last.timestamp) > 0 ? normRecord(last) : null,
   }
 }

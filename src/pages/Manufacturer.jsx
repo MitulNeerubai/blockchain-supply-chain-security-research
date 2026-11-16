@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { loadProducts, reader } from '../lib/chain'
 import { useLoad, useSession, useTx } from '../lib/app'
-import { PRODUCT_LIMITS, sameAddr, validateProduct } from '../lib/format'
+import { ALL_PUBLIC, PRODUCT_LIMITS, PUBLIC_FIELDS, sameAddr, validateProduct } from '../lib/format'
 import { Alert, Button, Card, Empty, Field, Loading, Stat, Tabs } from '../components/ui'
 import { PageHead } from '../components/Layout'
 import { LicenceBanner, LicencePanel, useActiveLicensees, useStanding } from '../components/Licences'
@@ -13,7 +13,7 @@ import {
   canDelete, useDelete, useIncoming, useProductModals, useReclaimable,
 } from '../components/ProductList'
 
-const EMPTY_FORM = { name: '', quantity: '1', description: '', batch: '' }
+const EMPTY_FORM = { name: '', quantity: '1', description: '', batch: '', show: ALL_PUBLIC }
 
 export default function Manufacturer() {
   const s = useSession()
@@ -73,7 +73,7 @@ export default function Manufacturer() {
     setSubmitted(true)
     if (Object.keys(errors).length) return
     const f = { name: form.name.trim(), batch: form.batch.trim(), description: form.description.trim(), qty: BigInt(form.quantity.trim()) }
-    await run('create', () => s.write.pt.createProduct(f.name, '', f.qty, f.description, f.batch), {
+    await run('create', () => s.write.pt.createProduct(f.name, '', f.qty, f.description, f.batch, form.show), {
       success: `Product “${f.name}” created.`,
       onDone: async () => { setForm(EMPTY_FORM); setTouched({}); setSubmitted(false); setFilter('stock'); await products.reload() },
     })
@@ -148,6 +148,19 @@ export default function Manufacturer() {
                     <Field label="Description *" error={showErr('description')} hint={`${form.description.trim().length}/${PRODUCT_LIMITS.description}`}>
                       <textarea className={`input${showErr('description') ? ' invalid' : ''}`} rows={2} placeholder="e.g. Electronics, 12V, 500 g" value={form.description} onChange={set('description')} onBlur={blur('description')} disabled={!canCreate} maxLength={PRODUCT_LIMITS.description} />
                     </Field>
+                  </div>
+                  <div className="span-all">
+                    <div className="field-label">What customers see when they scan the QR code</div>
+                    <div className="check-row">
+                      {PUBLIC_FIELDS.map(x => (
+                        <label key={x.key} className="check">
+                          <input type="checkbox" disabled={!canCreate} checked={(form.show & x.bit) !== 0}
+                            onChange={e => setForm(v => ({ ...v, show: e.target.checked ? v.show | x.bit : v.show & ~x.bit }))} />
+                          <span>{x.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <span className="field-hint">The product name, your company, the verification result and the chain of custody are always shown. Untick a detail to leave it off the public page; this cannot be changed after the product is created. Unticked details are hidden on this website only: they are still stored on the blockchain.</span>
                   </div>
                 </div>
                 {submitted && Object.keys(errors).length > 0 && <Alert type="error">Fill in all required fields before creating the product.</Alert>}

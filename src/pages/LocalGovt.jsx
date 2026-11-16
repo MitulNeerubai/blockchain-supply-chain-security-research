@@ -16,7 +16,7 @@ export default function LocalGovt() {
   const facts = { loading: standing.loading, licensed: !!standing.data?.ok, issued: net.issued(s.address).length }
   return (
     <DashFrame facts={facts} onGo={setTab}>
-      <PageHead session={s} title={s.company} />
+      <PageHead session={s} title={s.company} subtitle={s.region ? `Local Government · ${s.region}` : undefined} />
       <div style={{ marginBottom: 20 }}><LicenceBanner standing={standing} /></div>
       <Tabs value={tab} onChange={setTab} tabs={[
         { id: 'mf', label: 'Manufacturers', icon: '🏭' },

@@ -3,17 +3,17 @@
   "chainId": 252501,
   "rpcUrl": "https://eth.didlab.org",
   "deployer": "0x71f15B6EC8fea94495B5608D2d48c73C060d488e",
-  "deployedAt": "2026-11-10T23:06:58.282Z",
-  "deployBlock": 7358199,
+  "deployedAt": "2026-11-16T03:53:21.258Z",
+  "deployBlock": 7582789,
   "contracts": {
     "custody": {
       "name": "Custody",
-      "address": "0x8beC1C1147D6142109C44b024e66c772374e5E78",
+      "address": "0xB940497914D828d7744407C84B1c0d5993B0e1eb",
       "abi": []
     },
     "audit": {
       "name": "AuditLog",
-      "address": "0xf184B7594C5f2D51CC76f2A7300E5bb60bC4BC64",
+      "address": "0xc4B1aC46227c4E913430da275e5553B43356AdAe",
       "abi": [
         {
           "inputs": [],
@@ -282,7 +282,7 @@
     },
     "trust": {
       "name": "TrustRegistry",
-      "address": "0x212A7b5Ba36ad517AF9506E509D602080871cB0B",
+      "address": "0x8aF11C42168E7eF98d44Ad87f0d35A64AFB7ACa7",
       "abi": [
         {
           "inputs": [],
@@ -521,7 +521,7 @@
     },
     "did": {
       "name": "DIDRegistry",
-      "address": "0xB71B34Ef3cA73D7eB679d7cd5A8e5EC0944Fd70C",
+      "address": "0x1228b5C4794B9769f4147405C391B7CDba57c2Ad",
       "abi": [
         {
           "inputs": [
@@ -691,6 +691,11 @@
                   "internalType": "bool",
                   "name": "active",
                   "type": "bool"
+                },
+                {
+                  "internalType": "string",
+                  "name": "region",
+                  "type": "string"
                 }
               ],
               "internalType": "struct DIDRegistry.DIDDocument[]",
@@ -774,11 +779,35 @@
                   "internalType": "bool",
                   "name": "active",
                   "type": "bool"
+                },
+                {
+                  "internalType": "string",
+                  "name": "region",
+                  "type": "string"
                 }
               ],
               "internalType": "struct DIDRegistry.DIDDocument",
               "name": "",
               "type": "tuple"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "controller",
+              "type": "address"
+            }
+          ],
+          "name": "getRegion",
+          "outputs": [
+            {
+              "internalType": "string",
+              "name": "",
+              "type": "string"
             }
           ],
           "stateMutability": "view",
@@ -941,6 +970,29 @@
           "type": "function"
         },
         {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "wallet",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "region",
+              "type": "string"
+            }
+          ],
+          "name": "registerLocalGovt",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
           "inputs": [],
           "name": "totalDIDs",
           "outputs": [
@@ -970,7 +1022,7 @@
     },
     "cred": {
       "name": "CredentialRegistry",
-      "address": "0xA69A014804B6aD01dc1E56e9aBc523efe7336BE3",
+      "address": "0x82Fe157F88C403c1CA4C9F6f9DC7737DaB9EC411",
       "abi": [
         {
           "inputs": [
@@ -1069,6 +1121,37 @@
             }
           ],
           "name": "CredentialRevoked",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "fromIssuer",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "toIssuer",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "moved",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "remaining",
+              "type": "uint256"
+            }
+          ],
+          "name": "LicencesTransferred",
           "type": "event"
         },
         {
@@ -1529,6 +1612,40 @@
           "type": "function"
         },
         {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "from",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "limit",
+              "type": "uint256"
+            }
+          ],
+          "name": "transferLicences",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "moved",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "remaining",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
           "inputs": [],
           "name": "trustRegistry",
           "outputs": [
@@ -1608,7 +1725,7 @@
     },
     "pt": {
       "name": "ProductTransfer",
-      "address": "0xf7D38494A31376Bb64AcF49693372b5fb33653A2",
+      "address": "0xC7613Ee7114c4c5f82A29ECf35F0A61bF6dcfbD1",
       "abi": [
         {
           "inputs": [
@@ -2201,6 +2318,11 @@
               "internalType": "string",
               "name": "batchNumber",
               "type": "string"
+            },
+            {
+              "internalType": "uint8",
+              "name": "publicFields",
+              "type": "uint8"
             }
           ],
           "name": "createProduct",
@@ -2445,6 +2567,11 @@
                   "internalType": "string",
                   "name": "batchNumber",
                   "type": "string"
+                },
+                {
+                  "internalType": "uint8",
+                  "name": "publicFields",
+                  "type": "uint8"
                 }
               ],
               "internalType": "struct Custody.Product",
@@ -2521,6 +2648,11 @@
                   "internalType": "string",
                   "name": "batchNumber",
                   "type": "string"
+                },
+                {
+                  "internalType": "uint8",
+                  "name": "publicFields",
+                  "type": "uint8"
                 }
               ],
               "internalType": "struct Custody.Product[]",
@@ -2938,7 +3070,7 @@
     },
     "ta": {
       "name": "TraceabilityAudit",
-      "address": "0xecA4153CD6f7A6Fc7251e1edc8186761c73a7cCf",
+      "address": "0x41c1378EF8a295de2CBddD973e4E757Ea0B85F51",
       "abi": [
         {
           "inputs": [

@@ -23,6 +23,7 @@ export function CompanyCard({ c }) {
         <Pill tone={TONE[st.state]} dot>{st.label}</Pill>
       </div>
       <div className="company-meta">
+        {c.region && <span>📍 {c.region}</span>}
         {c.role !== 'LocalGovt' && <span>Licensed by {held.filter(x => x.active).length || 0}</span>}
         {c.role !== 'Retailer' && <span>Licensed {issued.filter(x => x.active).length} {c.role === 'LocalGovt' ? 'manufacturers' : c.role === 'Manufacturer' ? 'distributors' : 'retailers'}</span>}
         <span>Since {fmtDate(c.createdAt)}</span>
@@ -40,7 +41,7 @@ export default function Companies() {
   const [q, setQ] = useState('')
   const all = useMemo(() => [...d.dir.values()], [d.dir])
   const shown = all
-    .filter(c => (role === 'all' || c.role === role) && (!q.trim() || c.company.toLowerCase().includes(q.trim().toLowerCase())))
+    .filter(c => (role === 'all' || c.role === role) && (!q.trim() || c.company.toLowerCase().includes(q.trim().toLowerCase()) || (c.region || '').toLowerCase().includes(q.trim().toLowerCase())))
     .sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role) || a.company.localeCompare(b.company))
 
   return (
@@ -71,7 +72,7 @@ export default function Companies() {
       {tab === 'dir' && (
         <div className="stack">
           <div className="row">
-            <input className="input grow" style={{ maxWidth: 320 }} placeholder="Search company name…" value={q} onChange={e => setQ(e.target.value)} />
+            <input className="input grow" style={{ maxWidth: 320 }} placeholder="Search company name or region…" value={q} onChange={e => setQ(e.target.value)} />
             <FilterChips value={role} onChange={setRole} options={[['all', 'All', all.length], ...ROLES.map(r => [r, ROLE_LABEL[r], all.filter(c => c.role === r).length])]} />
           </div>
           {d.loading ? <Loading /> : d.error ? <Alert type="error">{d.error}</Alert>

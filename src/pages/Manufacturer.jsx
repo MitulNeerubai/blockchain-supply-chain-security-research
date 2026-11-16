@@ -80,7 +80,7 @@ export default function Manufacturer() {
   }
 
   const recall = p => run('recall:' + p.id, () => s.write.pt.forceRecall(p.id), { success: `“${p.name}” recalled to your inventory.`, onDone: reloadAll })
-  const cancel = p => run('cancel:' + p.id, () => s.write.pt.cancelShipment(p.id), { success: 'Shipment cancelled — product is back in stock.', onDone: reloadAll })
+  const cancel = p => run('cancel:' + p.id, () => s.write.pt.cancelShipment(p.id), { success: 'Shipment cancelled - product is back in stock.', onDone: reloadAll })
 
   function actionsFor(p) {
     const info = rc.data?.[p.id]

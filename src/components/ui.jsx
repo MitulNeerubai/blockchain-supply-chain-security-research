@@ -34,7 +34,7 @@ export function Stat({ label, value, hint }) {
   return (
     <div className="card stat">
       <div className="stat-label">{label}</div>
-      <div className="stat-value">{value ?? '—'}</div>
+      <div className="stat-value">{value ?? '-'}</div>
       {hint && <div className="stat-hint">{hint}</div>}
     </div>
   )

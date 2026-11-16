@@ -79,13 +79,13 @@ export function ShipForm({ product, partners, partnerLabel, onShipped }) {
   const [to, setTo] = useState('')
   const key = 'ship:' + product.id
   if (!partners.length) {
-    return <span className="small muted">No active {partnerLabel.toLowerCase()}s licensed by you yet — license one in the {partnerLabel}s tab to ship.</span>
+    return <span className="small muted">No active {partnerLabel.toLowerCase()}s licensed by you yet - license one in the {partnerLabel}s tab to ship.</span>
   }
   return (
     <div className="ship-row">
       <select className="select" value={to} onChange={e => setTo(e.target.value)}>
         <option value="">Ship to {partnerLabel.toLowerCase()}…</option>
-        {partners.map(c => <option key={c.holder} value={c.holder}>{d.name(c.holder)} — {short(c.holder)}</option>)}
+        {partners.map(c => <option key={c.holder} value={c.holder}>{d.name(c.holder)} - {short(c.holder)}</option>)}
       </select>
       <Button variant="success" disabled={!to || !!busy} loading={busy === key}
         onClick={() => run(key, () => s.write.pt.shipTo(product.id, to), { success: `Shipped “${product.name}” to ${d.name(to)}.`, onDone: onShipped })}>
@@ -142,7 +142,7 @@ export function useReturn(onDone) {
           It shows up in their <i>Incoming</i> list; custody moves back to them once they accept it. You can cancel the return until then.
         </p>
         <div>
-          <div className="field-label" style={{ marginBottom: 6 }}>Reason (required — stored on-chain and shown in the product history)</div>
+          <div className="field-label" style={{ marginBottom: 6 }}>Reason (required - stored on-chain and shown in the product history)</div>
           <div className="chips" style={{ marginBottom: 8 }}>
             {REASONS.map(r => <button key={r} type="button" className={`chip${reason === r ? ' active' : ''}`} onClick={() => setReason(r)}>{r}</button>)}
           </div>
@@ -229,7 +229,7 @@ export function CallBackBanner({ items, info, onDone }) {
   return (
     <Alert type="warning" title={`${due.length} product${due.length === 1 ? '' : 's'} affected by a revoked or expired licence`}
       action={<Button size="sm" variant="secondary" loading={busy === 'reclaim-all'} onClick={all}>⤺ Call back {due.length === 1 ? 'it' : 'all'}</Button>}>
-      {due.slice(0, 3).map(p => <div key={p.id} className="small">#{p.id} {p.name} — {info[p.id].reason}</div>)}
+      {due.slice(0, 3).map(p => <div key={p.id} className="small">#{p.id} {p.name} - {info[p.id].reason}</div>)}
       {due.length > 3 && <div className="small">…and {due.length - 3} more</div>}
       <div className="small faint" style={{ marginTop: 4 }}>If the automatic keeper is running, in-transit shipments revert on their own within a few minutes.</div>
     </Alert>

@@ -80,7 +80,7 @@ export function LicenceBanner({ standing }) {
             <div className="lic-row" key={lic.id}>
               <span className="grow">
                 <b>From <CompanyLink address={lic.issuer}>{d.name(lic.issuer)}</CompanyLink></b>
-                <span className="muted small"> — {reasonOf(lic)}</span>
+                <span className="muted small"> - {reasonOf(lic)}</span>
               </span>
               <CredPill status={lic.status} />
             </div>
@@ -165,7 +165,7 @@ export function LicencePanel({ standing, onChange }) {
           >
             <select className="select" value={holder} onChange={e => setHolder(e.target.value)} disabled={!canIssue || !available.length}>
               <option value="">{available.length ? `Select a ${targetLabel.toLowerCase()}…` : `No ${targetLabel.toLowerCase()}s without a licence from you`}</option>
-              {available.map(c => <option key={c.address} value={c.address}>{c.company} — {short(c.address)}{c.others.length ? ` (also works with ${c.others.length} other${c.others.length === 1 ? '' : 's'})` : ''}</option>)}
+              {available.map(c => <option key={c.address} value={c.address}>{c.company} - {short(c.address)}{c.others.length ? ` (also works with ${c.others.length} other${c.others.length === 1 ? '' : 's'})` : ''}</option>)}
             </select>
           </Field>
           <Field label="Valid for (days)" hint={`Expires ${fmtDate(nowSec() + Number(days || 0) * DAY)}`}>

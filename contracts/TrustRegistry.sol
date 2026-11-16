@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @title TrustRegistry — root of trust
+/// @title TrustRegistry - root of trust
 /// @notice The deployer becomes rootGA. Only rootGA can grant (or revoke) the
 ///         Local Government licence that lets an LG issue Manufacturing Licences.
 ///         Whether the wallet really registered as "LocalGovt" is enforced by

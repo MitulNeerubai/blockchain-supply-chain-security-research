@@ -146,7 +146,7 @@ export function latestPerPair(creds) {
   return [...m.values()]
 }
 
-/** All licences this wallet holds — one per issuer (newest / live one). */
+/** All licences this wallet holds - one per issuer (newest / live one). */
 export async function loadMyLicences(address) {
   const { cred } = reader()
   const ids = await cred.getCredentialsByHolder(address)
@@ -159,7 +159,7 @@ export async function loadIssuedBy(address) {
   return loadCredentials(await cred.getCredentialsByIssuer(address))
 }
 
-/** Public: every credential + LG authorisations — the whole trust network in 3 calls. */
+/** Public: every credential + LG authorisations - the whole trust network in 3 calls. */
 export async function loadNetwork() {
   const { cred, trust } = reader()
   const [[list, active], rootGA, issuers] = await Promise.all([cred.getAllCredentials(), trust.rootGA(), trust.getIssuers()])

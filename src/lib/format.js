@@ -8,9 +8,9 @@ export const sameAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCas
 export const isZero = a => !a || a === ZERO
 
 export const fmtDate = ts =>
-  ts ? new Date(Number(ts) * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
+  ts ? new Date(Number(ts) * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '-'
 export const fmtDateTime = ts =>
-  ts ? new Date(Number(ts) * 1000).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+  ts ? new Date(Number(ts) * 1000).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'
 export const nowSec = () => Math.floor(Date.now() / 1000)
 export const daysLeft = ts => Math.ceil((Number(ts) - nowSec()) / DAY)
 
@@ -76,7 +76,7 @@ export const STATUS_PILL = ['pill-green', 'pill-amber', 'pill-blue', 'pill-gray'
 /** TransferRecord.kind */
 export const KIND = { SHIP: 0, RETURN: 1, RECALL: 2, RECLAIM: 3 }
 
-/** Product form rules — must match ProductTransfer.createProduct. */
+/** Product form rules - must match ProductTransfer.createProduct. */
 export const PRODUCT_LIMITS = { name: 80, batch: 40, description: 200, maxQty: 1_000_000_000 }
 export function validateProduct(f) {
   const e = {}

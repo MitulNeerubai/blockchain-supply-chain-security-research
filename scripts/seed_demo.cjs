@@ -1,4 +1,4 @@
-// scripts/seed_demo.cjs — fills a LOCAL chain with a demo scenario for screenshots / the paper.
+// scripts/seed_demo.cjs - fills a LOCAL chain with a demo scenario for screenshots / the paper.
 //
 //   npx hardhat node                                   (terminal 1)
 //   npm run deploy:local                               (terminal 2)
@@ -17,7 +17,7 @@ async function main() {
   const send = async p => (await p).wait();
   const year = async () => (await ethers.provider.getBlock("latest")).timestamp + 365 * 86400;
 
-  // Local Governments are added by rootGA (wallet, name, region) — they cannot self-register.
+  // Local Governments are added by rootGA (wallet, name, region) - they cannot self-register.
   await send(C("did", root).registerLocalGovt(lg.address, "Jackson County Licensing Office", "Jackson County, MO"));
   await send(C("did", root).registerLocalGovt(lg2.address, "Greene County Licensing Office", "Greene County, MO"));
   await send(C("trust", root).authorizeIssuer(lg2.address, "LocalGovt"));

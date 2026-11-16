@@ -23,7 +23,7 @@ export function ProductTable({ rows }) {
                 <a href={`#/product/${p.id}`} className="strong" onClick={e => e.stopPropagation()}>{p.name}</a>
                 {(isPublic(p, 'batch') || isPublic(p, 'quantity')) && (
                   <div className="faint small">
-                    {[isPublic(p, 'batch') && `Batch ${p.batchNumber || '—'}`, isPublic(p, 'quantity') && `Qty ${p.quantity}`].filter(Boolean).join(' · ')}
+                    {[isPublic(p, 'batch') && `Batch ${p.batchNumber || '-'}`, isPublic(p, 'quantity') && `Qty ${p.quantity}`].filter(Boolean).join(' · ')}
                   </div>
                 )}
                 {p.last?.note && p.last.note !== 'Cancelled by sender' && <div className="small note-inline">“{p.last.note}”</div>}
@@ -31,7 +31,7 @@ export function ProductTable({ rows }) {
               <td onClick={e => e.stopPropagation()}><CompanyLink address={p.manufacturer}>{d.name(p.manufacturer)}</CompanyLink></td>
               <td className="small">{locationOf(p, null, d.name)}</td>
               <td><StatusPill status={p.status} /></td>
-              <td className="nowrap small">{isPublic(p, 'created') ? fmtDate(p.createdAt) : '—'}</td>
+              <td className="nowrap small">{isPublic(p, 'created') ? fmtDate(p.createdAt) : '-'}</td>
             </tr>
           ))}
         </tbody>
@@ -64,7 +64,7 @@ export default function AllProducts() {
       <div className="page-head">
         <div>
           <h1 className="page-title">All products</h1>
-          <p className="page-sub">Every product ever created on the chain, where it is right now and its status. Public — no wallet needed. Click a row for its full history and verification.</p>
+          <p className="page-sub">Every product ever created on the chain, where it is right now and its status. Public - no wallet needed. Click a row for its full history and verification.</p>
         </div>
         <Button variant="ghost" onClick={all.reload}>↻ Refresh</Button>
       </div>

@@ -9,7 +9,7 @@ import { ProductLookup } from '../components/Products'
 import { TrustTree } from '../components/Network'
 import DashFrame from '../components/DashFrame'
 
-/** Licences moved per transaction — keeps each transfer well under Besu's block gas limit. */
+/** Licences moved per transaction - keeps each transfer well under Besu's block gas limit. */
 const TRANSFER_BATCH = 4
 const ORDER = { pending: 0, licensed: 1, revoked: 2 }
 const EMPTY_LG = { wallet: '', name: '', region: '' }
@@ -58,7 +58,7 @@ export default function RootGA() {
 
   return (
     <DashFrame facts={facts} onGo={setTab}>
-      <PageHead session={s} title="Root Governance Authority" subtitle="Add Local Governments and grant their licences — the root of the chain of trust." />
+      <PageHead session={s} title="Root Governance Authority" subtitle="Add Local Governments and grant their licences - the root of the chain of trust." />
 
       <div className="grid grid-stats" style={{ marginBottom: 20 }}>
         <Stat label="LG licences active" value={lgs.data ? count('licensed') : '…'} hint={count('pending') ? `${count('pending')} awaiting a licence` : undefined} />
@@ -104,8 +104,8 @@ export default function RootGA() {
                         return (
                           <tr key={lg.address}>
                             <td><Entity address={lg.address} name={lg.company} role="LocalGovt" /></td>
-                            <td>{lg.region || '—'}</td>
-                            <td>{live ? `${live} licensed` : '—'}</td>
+                            <td>{lg.region || '-'}</td>
+                            <td>{live ? `${live} licensed` : '-'}</td>
                             <td className="nowrap">{fmtDate(lg.createdAt)}</td>
                             <td>
                               {lg.state === 'licensed' ? <Pill tone="green" dot>Licensed · {fmtDate(lg.since)}</Pill>
@@ -218,12 +218,12 @@ function AddLocalGovt({ onAdded }) {
     if (invalid || avail === 'checking') return
     const addr = ethers.getAddress(wallet)
     const r1 = await run('addlg', () => s.write.did.registerLocalGovt(addr, name, region), {
-      pending: 'Step 1 of 2 — registering the Local Government…', success: `Step 1 of 2 done — ${name} is registered. Now confirm its licence.`, onDone: d.refresh,
+      pending: 'Step 1 of 2 - registering the Local Government…', success: `Step 1 of 2 done - ${name} is registered. Now confirm its licence.`, onDone: d.refresh,
     })
     if (!r1) return
     setF(EMPTY_LG); setSubmitted(false)
     await run('addlg', () => s.write.trust.authorizeIssuer(addr, 'LocalGovt'), {
-      pending: 'Step 2 of 2 — granting the LG licence…', success: `${name} is now a licensed Local Government for ${region}.`,
+      pending: 'Step 2 of 2 - granting the LG licence…', success: `${name} is now a licensed Local Government for ${region}.`,
     })
     await onAdded?.()
   }
@@ -327,7 +327,7 @@ function TransferModal({ lg, live, targets, onClose, onDone }) {
         </div>
         <Field label="Local Government that takes over *">
           <select className="select" value={to} onChange={e => setTo(e.target.value)} disabled={!!busy}>
-            {targets.map(t => <option key={t.address} value={t.address}>{t.company}{t.region ? ` — ${t.region}` : ''}</option>)}
+            {targets.map(t => <option key={t.address} value={t.address}>{t.company}{t.region ? ` - ${t.region}` : ''}</option>)}
           </select>
         </Field>
         {lg.licensed && (

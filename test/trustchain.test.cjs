@@ -92,7 +92,7 @@ describe("TrustRegistry", () => {
   });
 });
 
-describe("CredentialRegistry — licence chain", () => {
+describe("CredentialRegistry - licence chain", () => {
   it("builds LG→MF→DT→RT with the right licence types", async () => {
     const { cred, mf, dt, rt, lg } = await fullChain();
     for (const [who, issuer, type] of [[mf, lg, "ManufacturingLicense"], [dt, mf, "TradeLicense"], [rt, dt, "TradeLicense"]]) {
@@ -241,7 +241,7 @@ describe("ProductTransfer", () => {
   });
 });
 
-describe("v4 — required fields, delete, returns, call-back, multi-manufacturer", () => {
+describe("v4 - required fields, delete, returns, call-back, multi-manufacturer", () => {
   /** Adds a second Manufacturer (Beta Mfg) that also licenses the same Distributor. */
   async function twoManufacturers() {
     const f = await fullChain();
@@ -427,7 +427,7 @@ describe("v4 — required fields, delete, returns, call-back, multi-manufacturer
   });
 });
 
-describe("v5 — rootGA adds Local Governments, licence transfer, public product fields", () => {
+describe("v5 - rootGA adds Local Governments, licence transfer, public product fields", () => {
   it("Local Governments cannot self-register; only rootGA adds them (with a region)", async () => {
     const { did, lg, mf, outsider } = await deployAll();
     await expect(did.connect(lg).registerDID("LocalGovt", "City of Kansas"))
@@ -463,7 +463,7 @@ describe("v5 — rootGA adds Local Governments, licence transfer, public product
     return { ...f, lg2: f.outsider };
   }
 
-  it("rootGA transfers an LG's licences to another LG — nobody below is suspended", async () => {
+  it("rootGA transfers an LG's licences to another LG - nobody below is suspended", async () => {
     const f = await twoLGs();
     const { cred, trust, did, pt, lg, lg2, mf, dt, rt, mf2 } = f;
     await did.connect(mf2).registerDID("Manufacturer", "Beta Mfg");

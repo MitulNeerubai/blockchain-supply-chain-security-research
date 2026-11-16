@@ -6,7 +6,7 @@ import "./TrustRegistry.sol";
 import "./DIDRegistry.sol";
 import "./AuditLog.sol";
 
-/// @title CredentialRegistry — the licence chain
+/// @title CredentialRegistry - the licence chain
 /// @notice Who may licence whom is fixed by role:
 ///           rootGA ──(TrustRegistry)──▶ LocalGovt
 ///           LocalGovt    ──ManufacturingLicense──▶ Manufacturer
@@ -96,7 +96,7 @@ contract CredentialRegistry {
             c.revoked   = true;
             c.revokedAt = block.timestamp;
             emit CredentialRevoked(ids[i], msg.sender, c.holder);
-            // The receiving LG may already licence this Manufacturer itself — then nothing to re-issue.
+            // The receiving LG may already licence this Manufacturer itself - then nothing to re-issue.
             if (activeCredentialFrom(to, c.holder) == bytes32(0)) _issue(to, c.holder, c.credType, c.expiresAt);
             moved++;
         }
@@ -204,7 +204,7 @@ contract CredentialRegistry {
         return (true, "");
     }
 
-    // ── Validity (at a past moment) — used by TraceabilityAudit ─────────────
+    // ── Validity (at a past moment) - used by TraceabilityAudit ─────────────
     /// @notice Did `issuer` hold a non-revoked, non-expired licence for `holder` at time `t`?
     ///         (Direct check only; cascading trust is evaluated for "now" separately.)
     function wasLicensedAt(address issuer, address holder, uint256 t) external view returns (bool) {

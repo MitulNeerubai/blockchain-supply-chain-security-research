@@ -8,14 +8,14 @@ import "./DIDRegistry.sol";
 import "./AuditLog.sol";
 import "./Custody.sol";
 
-/// @title ProductTransfer — products as ERC-721 tokens moving MF → DT → RT
+/// @title ProductTransfer - products as ERC-721 tokens moving MF → DT → RT
 /// @notice Licences are per relationship. A Distributor can work for several
 ///         Manufacturers: it may only receive/ship a product while it holds a
 ///         live licence from THAT product's Manufacturer. A Retailer may only
 ///         receive from a Distributor that licensed it.
 ///         Every handoff is two-step (ship, confirm). Products can also be sent
-///         back upstream (return), pulled back (recall), or — when a licence has
-///         lapsed — reverted / reclaimed by anyone, with the reason recorded.
+///         back upstream (return), pulled back (recall), or - when a licence has
+///         lapsed - reverted / reclaimed by anyone, with the reason recorded.
 ///         The licence rules live in the linked `Custody` library.
 contract ProductTransfer is ERC721 {
     using Custody for Custody.Product;
@@ -117,7 +117,7 @@ contract ProductTransfer is ERC721 {
 
     /// @notice Distributor sends a product back to its Manufacturer, or a Retailer
     ///         back to the Distributor that shipped it. The upstream party confirms.
-    ///         Works even if your own licence has lapsed — returning goods is always allowed.
+    ///         Works even if your own licence has lapsed - returning goods is always allowed.
     function returnToSender(uint256 productId, string calldata reason) external productExists(productId) {
         Custody.Product storage p = _products[productId];
         address to = Custody.checkReturn(p, _history[productId], msg.sender, reason);
@@ -217,7 +217,7 @@ contract ProductTransfer is ERC721 {
         for (uint256 i = 0; i < ids.length; i++) out[i] = _products[ids[i]];
     }
 
-    /// @notice Latest history record of each product (empty record if none) — for list views.
+    /// @notice Latest history record of each product (empty record if none) - for list views.
     function getLastRecords(uint256[] calldata ids) external view returns (Custody.TransferRecord[] memory out) {
         out = new Custody.TransferRecord[](ids.length);
         for (uint256 i = 0; i < ids.length; i++) {
@@ -270,7 +270,7 @@ contract ProductTransfer is ERC721 {
         auditLog.logAction(msg.sender, action, string.concat("productId=", Strings.toString(id), bytes(extra).length > 0 ? " " : "", extra));
     }
 
-    /// Products move only through this contract's functions — block direct ERC-721 transfers.
+    /// Products move only through this contract's functions - block direct ERC-721 transfers.
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         require(auth == address(0), "ProductTransfer: use shipTo / confirmReceipt");
         return super._update(to, tokenId, auth);

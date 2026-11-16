@@ -33,8 +33,8 @@ export function LastNote({ p }) {
 }
 
 const KIND_TITLE = {
-  [KIND.SHIP]: (h, role) => h.cancelled ? 'Shipment stopped' : h.confirmed ? `Received by ${role || 'recipient'}` : 'Shipped — awaiting confirmation',
-  [KIND.RETURN]: h => h.cancelled ? 'Return stopped' : h.confirmed ? 'Return received' : 'Returned — awaiting confirmation',
+  [KIND.SHIP]: (h, role) => h.cancelled ? 'Shipment stopped' : h.confirmed ? `Received by ${role || 'recipient'}` : 'Shipped - awaiting confirmation',
+  [KIND.RETURN]: h => h.cancelled ? 'Return stopped' : h.confirmed ? 'Return received' : 'Returned - awaiting confirmation',
   [KIND.RECALL]: () => 'Recalled upstream',
   [KIND.RECLAIM]: () => 'Called back (licence lapsed)',
 }
@@ -85,7 +85,7 @@ export function QRModal({ product, onClose }) {
           <div className="pid">Product #{product.id}</div>
         </div>
         {src ? <img className="qr-img" src={src} alt={`QR code for product ${product.id}`} /> : <Loading />}
-        <p className="muted small">Anyone can scan this to verify the full chain of custody — no wallet needed.</p>
+        <p className="muted small">Anyone can scan this to verify the full chain of custody - no wallet needed.</p>
         <p className="faint small">
           {(product.publicFields ?? ALL_PUBLIC) === ALL_PUBLIC
             ? 'The public page shows every product detail.'
@@ -194,7 +194,7 @@ export function ProductLookup() {
               </div>
               {vis('description') && p.description && <p className="muted">{p.description}</p>}
               {state.reclaim?.ok && (
-                <Alert type="warning" title="Licence lapsed — product can be called back"
+                <Alert type="warning" title="Licence lapsed - product can be called back"
                   action={s && <Button size="sm" variant="secondary" loading={busy === 'reclaim'} onClick={reclaim}>Call back</Button>}>
                   {state.reclaim.reason}
                 </Alert>

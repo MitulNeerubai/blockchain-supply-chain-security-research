@@ -1,8 +1,8 @@
-# DIDLab Supply Chain — SSI Traceability Prototype
+# DIDLab Supply Chain - SSI Traceability Prototype
 
 A Self-Sovereign Identity (SSI) supply-chain traceability system on Hyperledger Besu. Companies hold an on-chain DID with a unique company name, receive licences down a chain of trust, and move products (ERC-721 tokens) only to partners they licensed. Anyone can verify a product's chain of custody by scanning its QR code.
 
-> Research prototype — **DIDLab, Digital Identity and Distributed Ledger Laboratory, UMKC**
+> Research prototype - **DIDLab, Digital Identity and Distributed Ledger Laboratory, UMKC**
 > Supervisor: Dr. A S M Touhidul Hasan · Live: https://mitul.didlab.org
 
 ---
@@ -19,23 +19,23 @@ rootGA (deployer)
 
 | Role | Registers as | Licensed by | Can license | Products |
 |---|---|---|---|---|
-| **rootGA** | — (deployer wallet) | — | Local Governments | — |
-| **Local Government** | added by rootGA (wallet, name, region) — cannot self-register | rootGA | Manufacturers | — |
+| **rootGA** | - (deployer wallet) | - | Local Governments | - |
+| **Local Government** | added by rootGA (wallet, name, region) - cannot self-register | rootGA | Manufacturers | - |
 | **Manufacturer** | `Manufacturer` | Local Government | Distributors | create, ship to *its* Distributors, recall |
 | **Distributor** | `Distributor` | Manufacturer | Retailers | accept, ship to *its* Retailers, recall from them |
-| **Retailer** | `Retailer` | Distributor | — | accept, verify chain, share QR |
+| **Retailer** | `Retailer` | Distributor | - | accept, verify chain, share QR |
 
 Rules enforced **on-chain**:
 
-- **Unique company names** — stored in the DID, case-insensitive (`Acme` = `ACME`).
-- **Role-locked licensing** — each role can only license the next role down; the licence type follows from the holder's role.
-- **One live licence per wallet** — a new licence supersedes the old one.
-- **Cascading revocation** — a licence is only valid while its issuer is still trusted. Revoking an LG suspends its Manufacturers, their Distributors and their Retailers; re-granting restores them.
-- **Replacing a Local Government without disruption** — rootGA calls `transferLicences(from, to, limit)`: every live Manufacturing License is re-issued by the receiving LG with the same expiry date, then the old LG is revoked. Nobody below is suspended.
-- **Local Governments are added by rootGA only** — with a name and a region (for example `Jackson County, MO`). `registerDID` rejects the `LocalGovt` role.
-- **Public product details are the Manufacturer's choice** — `publicFields` (quantity, batch number, description, created date) is set when the product is created and decides what the public QR page shows. It is a display preference: the data itself is still on-chain.
-- **Licensed handoffs** — `shipTo` only accepts a recipient whose live licence *you* issued. Every handoff is two-step (ship → recipient confirms).
-- **No side-door transfers** — direct ERC-721 `transferFrom` is blocked.
+- **Unique company names** - stored in the DID, case-insensitive (`Acme` = `ACME`).
+- **Role-locked licensing** - each role can only license the next role down; the licence type follows from the holder's role.
+- **One live licence per wallet** - a new licence supersedes the old one.
+- **Cascading revocation** - a licence is only valid while its issuer is still trusted. Revoking an LG suspends its Manufacturers, their Distributors and their Retailers; re-granting restores them.
+- **Replacing a Local Government without disruption** - rootGA calls `transferLicences(from, to, limit)`: every live Manufacturing License is re-issued by the receiving LG with the same expiry date, then the old LG is revoked. Nobody below is suspended.
+- **Local Governments are added by rootGA only** - with a name and a region (for example `Jackson County, MO`). `registerDID` rejects the `LocalGovt` role.
+- **Public product details are the Manufacturer's choice** - `publicFields` (quantity, batch number, description, created date) is set when the product is created and decides what the public QR page shows. It is a display preference: the data itself is still on-chain.
+- **Licensed handoffs** - `shipTo` only accepts a recipient whose live licence *you* issued. Every handoff is two-step (ship → recipient confirms).
+- **No side-door transfers** - direct ERC-721 `transferFrom` is blocked.
 
 ## Contracts (`contracts/`)
 
@@ -89,16 +89,16 @@ cp dist/index.html /srv/www/index.html
 cp dist/assets/* /srv/www/assets/
 ```
 
-There is nothing to paste into `App.jsx` any more — addresses and ABIs come from `src/deployment.json`.
+There is nothing to paste into `App.jsx` any more - addresses and ABIs come from `src/deployment.json`.
 A redeploy starts from an empty chain state: everyone registers again and licences are re-issued.
 
 ## Local development
 
 ```bash
-npm run node:local        # terminal 1 — local chain (chain ID 1337)
+npm run node:local        # terminal 1 - local chain (chain ID 1337)
 npm run deploy:local      # terminal 2
-npm run dev               # terminal 3 — http://localhost:5173
-npm run server            # optional — email OTP API on :3001
+npm run dev               # terminal 3 - http://localhost:5173
+npm run server            # optional - email OTP API on :3001
 ```
 
 ## Email notifications
@@ -113,5 +113,5 @@ Implements the **Trusted Traceability Service (TTS)** framework from:
 
 ## Author
 
-**Mitul Neerubai** — B.S. Computer Science, UMKC · Research Analyst, DIDLab
+**Mitul Neerubai** - B.S. Computer Science, UMKC · Research Analyst, DIDLab
 [github.com/MitulNeerubai](https://github.com/MitulNeerubai) · [linkedin.com/in/mitul-neerubai](https://linkedin.com/in/mitul-neerubai)

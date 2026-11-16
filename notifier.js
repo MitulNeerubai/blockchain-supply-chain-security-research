@@ -1,5 +1,5 @@
 /**
- * notifier.js — emails participants about supply-chain events.
+ * notifier.js - emails participants about supply-chain events.
  *
  * Reads contract addresses/ABIs from src/deployment.json (written by deploy_all.cjs)
  * and per-wallet emails from emails.json (written by server.js).
@@ -17,12 +17,12 @@ dotenv.config()
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const depPath = ['src/deployment.json', 'supply-chain-ui/src/deployment.json'].map(p => join(__dirname, p)).find(existsSync)
-if (!depPath) throw new Error('deployment.json not found — run the deploy script first')
+if (!depPath) throw new Error('deployment.json not found - run the deploy script first')
 const dep = JSON.parse(readFileSync(depPath, 'utf8'))
 const RPC = process.env.BESU_RPC || dep.rpcUrl
 const PORTAL = process.env.PORTAL_URL || 'https://mitul.didlab.org'
 
-// polling: read new logs every few seconds instead of eth_newFilter — Besu silently drops idle filters
+// polling: read new logs every few seconds instead of eth_newFilter - Besu silently drops idle filters
 const provider = new ethers.JsonRpcProvider(RPC, dep.chainId, { staticNetwork: true, polling: true, pollingInterval: 8000 })
 const C = name => new ethers.Contract(dep.contracts[name].address, dep.contracts[name].abi, provider)
 const pt = C('pt'), did = C('did'), cred = C('cred'), trust = C('trust')
@@ -36,7 +36,7 @@ const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user:
 
 async function notify(addr, subject, lines) {
   const to = emailOf(addr)
-  if (!to) return console.log(`[notifier] no email for ${addr} — skipped "${subject}"`)
+  if (!to) return console.log(`[notifier] no email for ${addr} - skipped "${subject}"`)
   try {
     await transporter.sendMail({
       from: `"DIDLab Supply Chain" <${process.env.GMAIL_USER}>`,
@@ -86,7 +86,7 @@ pt.on('ProductReturned', async (id, from, to, reason) => {
 
 // ─── Optional keeper: automatically revert in-transit shipments whose recipient
 // lost its licence (revoked / expired). Set KEEPER_PRIVATE_KEY in .env to a wallet
-// with a little TRUST for gas. Products already held are NOT moved automatically —
+// with a little TRUST for gas. Products already held are NOT moved automatically -
 // the upstream company decides with the "Call back" button.
 const KEEPER_KEY = (process.env.KEEPER_PRIVATE_KEY || '').trim()
 if (/^(0x)?[0-9a-fA-F]{64}$/.test(KEEPER_KEY)) {
@@ -119,7 +119,7 @@ if (/^(0x)?[0-9a-fA-F]{64}$/.test(KEEPER_KEY)) {
   sweep('startup')
   console.log(`[keeper] auto-revert enabled (wallet ${keeper.address})`)
 } else {
-  console.log('[keeper] disabled — set KEEPER_PRIVATE_KEY in .env to auto-revert shipments when a licence lapses')
+  console.log('[keeper] disabled - set KEEPER_PRIVATE_KEY in .env to auto-revert shipments when a licence lapses')
 }
 
 cred.on('CredentialIssued', async (_id, issuer, holder, type, expiresAt) => {
@@ -141,4 +141,4 @@ trust.on('IssuerRevoked', async issuer => {
   await notify(issuer, 'Local Government licence revoked', ['The Root Governance Authority revoked your Local Government licence. Manufacturers you licensed are suspended.'])
 })
 
-console.log(`[notifier] listening on ${RPC} (chain ${dep.chainId}) — ProductTransfer ${dep.contracts.pt.address}`)
+console.log(`[notifier] listening on ${RPC} (chain ${dep.chainId}) - ProductTransfer ${dep.contracts.pt.address}`)

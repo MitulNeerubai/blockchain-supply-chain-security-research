@@ -1,4 +1,4 @@
-// server.js — notification-email API + static file server for the built UI
+// server.js - notification-email API + static file server for the built UI
 //
 //   POST /api/email/send-otp    { email, address }              → emails a 6-digit code
 //   POST /api/email/verify-otp  { email, address, otp, signature } → links email to wallet
@@ -154,7 +154,7 @@ async function handleVerifyOTP(req, res) {
 
 const short = a => `${a.slice(0, 6)}…${a.slice(-4)}`
 
-// ─── Static files (only inside STATIC_DIR — no path traversal) ──────────────
+// ─── Static files (only inside STATIC_DIR - no path traversal) ──────────────
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.png': 'image/png', '.json': 'application/json' }
 
 function serveStatic(pathname, res) {
@@ -178,7 +178,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end() }
 
   const pathname = (req.url || '/').split('?')[0]
-  // nginx may strip the /api prefix before proxying — accept both forms
+  // nginx may strip the /api prefix before proxying - accept both forms
   const api = pathname.startsWith('/api/') ? pathname.slice(4) : pathname
 
   try {
@@ -198,5 +198,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`[server] http://localhost:${PORT}  (static: ${STATIC_DIR})`)
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_PASS) console.warn('[server] GMAIL_USER / GMAIL_PASS not set — OTP emails will fail')
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_PASS) console.warn('[server] GMAIL_USER / GMAIL_PASS not set - OTP emails will fail')
 })

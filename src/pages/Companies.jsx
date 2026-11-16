@@ -49,7 +49,7 @@ export default function Companies() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Companies</h1>
-          <p className="page-sub">Every registered account, its role and live licence status, and who licensed whom. Public — no wallet needed.</p>
+          <p className="page-sub">Every registered account, its role and live licence status, and who licensed whom. Public - no wallet needed.</p>
         </div>
         <Button variant="ghost" onClick={() => { d.refresh(); net.refresh() }}>↻ Refresh</Button>
       </div>

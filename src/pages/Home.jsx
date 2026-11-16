@@ -3,7 +3,7 @@ import { go, useDirectory, useNetwork } from '../lib/app'
 import { Button } from '../components/ui'
 import { useAllProducts } from './AllProducts'
 
-/** Landing page: one job — check a product. Everything else is one click away in the top bar. */
+/** Landing page: one job - check a product. Everything else is one click away in the top bar. */
 export default function Home() {
   const d = useDirectory()
   const net = useNetwork()

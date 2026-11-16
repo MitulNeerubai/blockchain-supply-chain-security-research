@@ -46,10 +46,10 @@ Open `.env` (`notepad .env` on Windows) and replace the `PASTE_…` values:
 Open **two terminals** in the project folder:
 
 ```bash
-# Terminal 1 — email verification service (port 3001)
+# Terminal 1 - email verification service (port 3001)
 npm run server
 
-# Terminal 2 — the web app (port 5173)
+# Terminal 2 - the web app (port 5173)
 npm run dev
 ```
 
@@ -107,8 +107,8 @@ Each role needs its own MetaMask account with a little TRUST for gas.
 ## Local blockchain instead of Besu (for development)
 
 ```bash
-npm run node:local       # terminal 1 — local chain, chain ID 1337, with funded test accounts
-npm run deploy:local     # terminal 2 — deploys and points the app at the local chain
+npm run node:local       # terminal 1 - local chain, chain ID 1337, with funded test accounts
+npm run deploy:local     # terminal 2 - deploys and points the app at the local chain
 npm run dev              # terminal 3
 ```
 

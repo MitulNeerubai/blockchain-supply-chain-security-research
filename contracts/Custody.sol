@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "./CredentialRegistry.sol";
 import "./DIDRegistry.sol";
 
-/// @title Custody — product types + "who may hold this product" rules
+/// @title Custody - product types + "who may hold this product" rules
 /// @notice Linked library used by ProductTransfer. Split out so ProductTransfer
 ///         fits DIDLab Besu's 4.7M block gas limit. Public functions run via
 ///         DELEGATECALL on ProductTransfer's storage.

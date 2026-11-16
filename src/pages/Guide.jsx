@@ -14,14 +14,14 @@ const VISITOR = [
 
 const FAQ = [
   ['Do I need a wallet to look around?', 'No. Home, Products, Companies, Verify and this guide read the blockchain directly. A wallet (MetaMask) is only needed to take actions as a company.'],
-  ['A manufacturer created a product by mistake — can it be deleted?', 'Yes, from the Manufacturer dashboard → Products → “🗑 Delete”, as long as the product is still in the manufacturer’s stock and was never accepted by a distributor. The record stays on-chain marked “Deleted”, but the product can no longer move.'],
+  ['A manufacturer created a product by mistake - can it be deleted?', 'Yes, from the Manufacturer dashboard → Products → “🗑 Delete”, as long as the product is still in the manufacturer’s stock and was never accepted by a distributor. The record stays on-chain marked “Deleted”, but the product can no longer move.'],
   ['Which product fields are required?', 'Name, quantity (≥ 1), batch number and description. The form shows what is missing and the smart contract rejects incomplete products as well.'],
   ['Can a manufacturer keep some details off the public page?', 'Yes. When creating a product the manufacturer ticks which optional details (quantity, batch number, description, created date) appear on the page a QR scan opens. The product name, the manufacturer, the verification result and the chain of custody are always shown. This is a display choice: the unticked details are still stored on the blockchain, and the companies that handle the product still see them.'],
   ['How does a Local Government join?', 'It does not register itself. It gives its wallet address to the Root Governance Authority, which adds it with a name and a region and grants its licence. After that the office signs in with MetaMask and lands directly on its dashboard.'],
   ['What if a Local Government has to be replaced?', 'The Root Governance Authority uses “Transfer” to hand all of its Manufacturing Licences to another licensed Local Government, with the same expiry dates, and then revokes the old one. No Manufacturer, Distributor or Retailer is suspended. If an LG is revoked without a transfer, everyone below it is suspended until the licences are transferred or the LG is re-granted.'],
   ['Can a distributor work for several manufacturers?', 'Yes. Each manufacturer issues its own Trade License. The distributor dashboard shows one box per manufacturer, and products of a manufacturer can only be shipped while the licence from that manufacturer is active.'],
   ['How do returns work?', 'A retailer can send a product back to the distributor that shipped it, and a distributor back to the manufacturer (“↩ Return”). A reason is required and stored on-chain. The receiver accepts it under Incoming (distributor) or Returns (manufacturer).'],
-  ['What happens when a licence is revoked or expires?', 'Shipments to that company can no longer be accepted. An in-transit shipment reverts to the sender with a note such as “licence of X was revoked” — automatically when the keeper service is running, or with the “⤺ Call back” button. A product already held by that company can be called back upstream the same way. A manufacturer’s own stock is frozen (not destroyed) until its licence is restored.'],
+  ['What happens when a licence is revoked or expires?', 'Shipments to that company can no longer be accepted. An in-transit shipment reverts to the sender with a note such as “licence of X was revoked” - automatically when the keeper service is running, or with the “⤺ Call back” button. A product already held by that company can be called back upstream the same way. A manufacturer’s own stock is frozen (not destroyed) until its licence is restored.'],
   ['Why does every handoff need two steps?', 'The sender ships, the receiver accepts. Custody only changes when the receiver confirms, so nobody can push goods onto a company without its consent and the history shows exactly who held what and when.'],
   ['What does “verified” mean on a product page?', 'The product reached a retailer through Manufacturer → Distributor → Retailer, and each handoff was licensed at the moment it happened. If a licence was revoked later, the page still shows “verified” but warns that the licence has changed since delivery.'],
 ]
@@ -34,7 +34,7 @@ export default function Guide() {
       <div className="page-head">
         <div>
           <h1 className="page-title">How it works</h1>
-          <p className="page-sub">A complete walkthrough — for visitors with no wallet, and for each company role step by step.</p>
+          <p className="page-sub">A complete walkthrough - for visitors with no wallet, and for each company role step by step.</p>
         </div>
       </div>
 
@@ -42,7 +42,7 @@ export default function Guide() {
         <Card title="1 · Just looking? No wallet needed" subtitle="Everything below is public and read live from the blockchain.">
           <ol className="guide-list">
             {VISITOR.map(([t, path, txt]) => (
-              <li key={t}><a href={'#' + path}><b>{t}</b></a> — {txt}</li>
+              <li key={t}><a href={'#' + path}><b>{t}</b></a> - {txt}</li>
             ))}
           </ol>
         </Card>

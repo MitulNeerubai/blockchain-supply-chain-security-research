@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "./TrustRegistry.sol";
 import "./AuditLog.sol";
 
-/// @title DIDRegistry — on-chain identities with a unique company name
+/// @title DIDRegistry - on-chain identities with a unique company name
 /// @notice Manufacturers, Distributors and Retailers self-register one DID.
 ///         Local Governments do NOT self-register: rootGA adds them (wallet,
 ///         name and region) with `registerLocalGovt`. The company name is stored
@@ -111,7 +111,7 @@ contract DIDRegistry {
     function totalDIDs() external view returns (uint256) { return _controllers.length; }
     function getControllers() external view returns (address[] memory) { return _controllers; }
 
-    /// @notice Full directory — used by the UI to show company names everywhere.
+    /// @notice Full directory - used by the UI to show company names everywhere.
     function getAllDIDs() external view returns (DIDDocument[] memory out) {
         out = new DIDDocument[](_controllers.length);
         for (uint256 i = 0; i < _controllers.length; i++) out[i] = _docs[_controllers[i]];

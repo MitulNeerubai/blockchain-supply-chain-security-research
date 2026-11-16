@@ -1,4 +1,4 @@
-// deploy_all.cjs — deploys all 6 contracts and writes src/deployment.json
+// deploy_all.cjs - deploys all 6 contracts and writes src/deployment.json
 //
 //   npm run deploy:besu     (DIDLab Besu, uses PRIVATE_KEY_ROOTGA from .env)
 //   npm run deploy:local    (against `npx hardhat node`)

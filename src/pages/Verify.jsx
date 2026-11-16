@@ -5,7 +5,7 @@ import { KIND, errMsg, fmtDate, isPublic } from '../lib/format'
 import { Alert, Button, Card, CompanyLink, CredPill, Entity, Loading, Pill } from '../components/ui'
 import { QRModal, StatusPill, Timeline, locationOf } from '../components/Products'
 
-/** Public product page (#/product/<id>, #/verify, or a scanned QR) — no wallet needed. */
+/** Public product page (#/product/<id>, #/verify, or a scanned QR) - no wallet needed. */
 export default function Verify({ productId }) {
   const d = useDirectory()
   const net = useNetwork()
@@ -61,7 +61,7 @@ export default function Verify({ productId }) {
             <div className={`card verdict ${a.verified ? (a.currentlyValid ? 'ok' : 'warn') : p.status === 0 || p.status === 1 ? 'warn' : 'bad'}`}>
               <div className="verdict-icon">{a.verified ? '✓' : p.status === 1 || p.status === 0 ? '…' : '✕'}</div>
               <div className="verdict-title">
-                {a.verified ? 'Authentic — chain verified' : p.status === 3 ? 'Deleted product' : p.status === 2 ? 'Not verified' : 'Not at a retailer yet'}
+                {a.verified ? 'Authentic - chain verified' : p.status === 3 ? 'Deleted product' : p.status === 2 ? 'Not verified' : 'Not at a retailer yet'}
               </div>
               <p className="muted" style={{ marginTop: 6 }}>
                 {a.verified
@@ -102,7 +102,7 @@ export default function Verify({ productId }) {
               </div>
             </Card>
 
-            <Card title="Chain of custody" subtitle="Every shipment, return, recall and call-back — with the reason when there is one"><Timeline product={p} hideCreated={!isPublic(p, 'created')} /></Card>
+            <Card title="Chain of custody" subtitle="Every shipment, return, recall and call-back - with the reason when there is one"><Timeline product={p} hideCreated={!isPublic(p, 'created')} /></Card>
           </>
         )}
         <p className="footer-note">

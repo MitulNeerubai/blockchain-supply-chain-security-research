@@ -28,7 +28,7 @@ export default function Retailer() {
   const verifiedCount = Object.values(audits).filter(a => a?.verified).length
   const reloadAll = () => Promise.all([inv.reload(), incoming.reload()])
   const ret = useReturn(reloadAll)
-  const cancel = p => run('cancel:' + p.id, () => s.write.pt.cancelShipment(p.id), { success: 'Return cancelled — product is back in your store.', onDone: reloadAll })
+  const cancel = p => run('cancel:' + p.id, () => s.write.pt.cancelShipment(p.id), { success: 'Return cancelled - product is back in your store.', onDone: reloadAll })
 
   async function verify(p) {
     setAudits(a => ({ ...a, [p.id]: 'loading' }))

@@ -40,7 +40,7 @@ export default function Distributor() {
   const rc = useReclaimable(watch)
   const reloadAll = async () => { await Promise.all([held.reload(), incoming.reload()]); rc.reload() }
   const ret = useReturn(reloadAll)
-  const cancel = p => run('cancel:' + p.id, () => s.write.pt.cancelShipment(p.id), { success: 'Shipment cancelled — product is back in stock.', onDone: reloadAll })
+  const cancel = p => run('cancel:' + p.id, () => s.write.pt.cancelShipment(p.id), { success: 'Shipment cancelled - product is back in stock.', onDone: reloadAll })
   const recall = p => run('recall:' + p.id, () => s.write.pt.forceRecall(p.id), { success: `“${p.name}” recalled from ${d.name(p.holder)}.`, onDone: reloadAll })
 
   // Inside each manufacturer box: one sub-box per destination
@@ -161,7 +161,7 @@ export default function Distributor() {
                     {!ok && (
                       <div style={{ marginBottom: 10 }}>
                         <Alert type="warning" title={`Your licence from ${d.name(mf)} is ${lic ? lic.status : 'missing'}`}>
-                          You cannot ship these products to retailers. Return them, or ask {d.name(mf)} to renew your licence — they can also call them back.
+                          You cannot ship these products to retailers. Return them, or ask {d.name(mf)} to renew your licence - they can also call them back.
                         </Alert>
                       </div>
                     )}

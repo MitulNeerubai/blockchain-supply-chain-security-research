@@ -17,14 +17,14 @@ export default function Connect({ onConnect }) {
         <div className="auth-hero">
           <div className="auth-logo">🔗</div>
           <h1 className="auth-title">Participant sign-in</h1>
-          <p className="auth-sub">For companies that create, ship, sell or license products. Just browsing? You don't need a wallet — use <a href="#/">Home</a>, <a href="#/products">Products</a> or <a href="#/verify">Verify</a>.</p>
+          <p className="auth-sub">For companies that create, ship, sell or license products. Just browsing? You don't need a wallet - use <a href="#/">Home</a>, <a href="#/products">Products</a> or <a href="#/verify">Verify</a>.</p>
         </div>
         <div className="card-body stack">
           <div className="feature-list">
-            <div className="feature">🪪 <span><b>One identity per company</b> — your DID and company name live on-chain.</span></div>
-            <div className="feature">🏛️ <span><b>Chain of trust</b> — Root Authority → Local Government → Manufacturer → Distributor → Retailer.</span></div>
-            <div className="feature">📦 <span><b>Licensed handoffs</b> — products only move between partners you licensed.</span></div>
-            <div className="feature">🧭 <span><b>Guided</b> — after you register, a checklist walks you through every next step.</span></div>
+            <div className="feature">🪪 <span><b>One identity per company</b> - your DID and company name live on-chain.</span></div>
+            <div className="feature">🏛️ <span><b>Chain of trust</b> - Root Authority → Local Government → Manufacturer → Distributor → Retailer.</span></div>
+            <div className="feature">📦 <span><b>Licensed handoffs</b> - products only move between partners you licensed.</span></div>
+            <div className="feature">🧭 <span><b>Guided</b> - after you register, a checklist walks you through every next step.</span></div>
           </div>
           {!hasWallet() ? (
             <Alert type="warning" title="MetaMask required to sign in">

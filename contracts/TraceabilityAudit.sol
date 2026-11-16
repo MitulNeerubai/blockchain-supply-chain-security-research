@@ -6,11 +6,11 @@ import "./Custody.sol";
 import "./CredentialRegistry.sol";
 import "./DIDRegistry.sol";
 
-/// @title TraceabilityAudit — public, read-only chain-of-custody verification
+/// @title TraceabilityAudit - public, read-only chain-of-custody verification
 /// @notice Two separate answers:
-///         • verified        — the product reached a Retailer through MF → DT → RT and
+///         • verified        - the product reached a Retailer through MF → DT → RT and
 ///                             every handoff was licensed AT THE TIME it happened.
-///         • currentlyValid  — all three parties' licences are still live today.
+///         • currentlyValid  - all three parties' licences are still live today.
 ///         A licence revoked after delivery does not undo a legitimate past handoff,
 ///         but the public page still shows that the licence is no longer valid.
 contract TraceabilityAudit {

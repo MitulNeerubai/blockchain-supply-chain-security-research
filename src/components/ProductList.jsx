@@ -4,6 +4,7 @@ import { useDirectory, useLoad, useNetwork, useSession, useTx } from '../lib/app
 import { KIND, fmtDate, sameAddr, short } from '../lib/format'
 import { Alert, Button, CredPill, Empty, Entity, Loading, Modal, Pill } from './ui'
 import { HistoryModal, LastNote, QRModal, StatusPill, locationOf } from './Products'
+import { RecordModal, parsePointer } from './Docs'
 
 /** One product row: title/meta on the left, actions on the right, optional footer. */
 export function ProductItem({ p, actions, foot, warn }) {
@@ -99,9 +100,11 @@ export function ShipForm({ product, partners, partnerLabel, onShipped }) {
 export function useProductModals() {
   const [qr, setQr] = useState(null)
   const [hist, setHist] = useState(null)
+  const [docsFor, setDocsFor] = useState(null)
   const buttons = p => (
     <>
       <Button variant="ghost" size="sm" onClick={() => setHist(p.id)}>History</Button>
+      {parsePointer(p.ipfsCID) && <Button variant="ghost" size="sm" onClick={() => setDocsFor(p)}>📄 Details</Button>}
       {p.status !== 3 && <Button variant="secondary" size="sm" onClick={() => setQr(p)}>QR</Button>}
     </>
   )
@@ -109,6 +112,7 @@ export function useProductModals() {
     <>
       {qr && <QRModal product={qr} onClose={() => setQr(null)} />}
       {hist && <HistoryModal id={hist} onClose={() => setHist(null)} />}
+      {docsFor && <RecordModal product={docsFor} onClose={() => setDocsFor(null)} />}
     </>
   )
   return { buttons, modals }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { loadProducts, reader } from '../lib/chain'
+import { uploadJSON } from '../lib/ipfs'
 import { useLoad, useSession, useTx } from '../lib/app'
 import { ALL_PUBLIC, PRODUCT_LIMITS, PUBLIC_FIELDS, sameAddr, validateProduct } from '../lib/format'
 import { Alert, Button, Card, Empty, Field, Loading, Stat, Tabs } from '../components/ui'
@@ -28,6 +29,7 @@ export default function Manufacturer() {
   const [touched, setTouched] = useState({})
   const [submitted, setSubmitted] = useState(false)
   const [showForm, setShowForm] = useState(true)
+  const [ipfsWarn, setIpfsWarn] = useState('')
 
   const products = useLoad(async () => loadProducts(await reader().pt.getManufacturerProducts(s.address)), [s.address])
   const list = products.data || []
@@ -71,10 +73,24 @@ export default function Manufacturer() {
   async function create(e) {
     e.preventDefault()
     setSubmitted(true)
+    setIpfsWarn('')
     if (Object.keys(errors).length) return
     const f = { name: form.name.trim(), batch: form.batch.trim(), description: form.description.trim(), qty: BigInt(form.quantity.trim()) }
-    await run('create', () => s.write.pt.createProduct(f.name, '', f.qty, f.description, f.batch, form.show), {
-      success: `Product “${f.name}” created.`,
+
+    // Automatically store an encrypted off-chain record on DIDLab Secure IPFS; keep only the pointer on-chain.
+    let pointer = ''
+    try {
+      const ref = await uploadJSON(s.signer, {
+        name: f.name, batchNumber: f.batch, description: f.description,
+        quantity: f.qty.toString(), createdAt: new Date().toISOString(), manufacturer: s.address,
+      })
+      pointer = JSON.stringify({ cid: ref.cid, iv: ref.iv, ts: ref.timestamp })
+    } catch (err) {
+      setIpfsWarn('Could not store the IPFS record (' + (err.message || 'upload failed') + '). The product will still be created on-chain.')
+    }
+
+    await run('create', () => s.write.pt.createProduct(f.name, pointer, f.qty, f.description, f.batch, form.show), {
+      success: `Product “${f.name}” created${pointer ? ' with an encrypted IPFS record' : ''}.`,
       onDone: async () => { setForm(EMPTY_FORM); setTouched({}); setSubmitted(false); setFilter('stock'); await products.reload() },
     })
   }
@@ -164,6 +180,7 @@ export default function Manufacturer() {
                   </div>
                 </div>
                 {submitted && Object.keys(errors).length > 0 && <Alert type="error">Fill in all required fields before creating the product.</Alert>}
+                {ipfsWarn && <Alert type="warning">{ipfsWarn}</Alert>}
                 <div className="row-between">
                   <p className="faint small">Created one by mistake? You can delete it while it is still in your stock and has never been received by a distributor.</p>
                   <Button type="submit" loading={busy === 'create'} disabled={!canCreate}>📦 Create product</Button>

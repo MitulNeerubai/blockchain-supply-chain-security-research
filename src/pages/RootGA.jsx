@@ -195,18 +195,18 @@ function AddLocalGovt({ onAdded }) {
       : !ethers.isAddress(wallet) ? 'This is not a valid wallet address (0x followed by 40 characters).'
       : sameAddr(wallet, s.address) ? 'This is your own Root Authority wallet.'
       : existing ? `This wallet is already registered as “${existing.company}” (${ROLE_LABEL[existing.role]}).` : '',
-    name: validateCompanyName(f.name) || (avail === 'taken' ? `“${name}” is already registered. Choose a different name.` : ''),
-    region: validateRegion(f.region),
+    name: validateCompanyName(f.name),
+    region: validateRegion(f.region) || (avail === 'taken' ? `“${region}” already has a Local Government. Each region can have only one.` : ''),
   }
-  const nameBasicErr = validateCompanyName(f.name)
+  const regionBasicErr = validateRegion(f.region)
   useEffect(() => {
-    if (!name || nameBasicErr) { setAvail('idle'); return }
+    if (!region || regionBasicErr) { setAvail('idle'); return }
     setAvail('checking')
     const t = setTimeout(async () => {
-      try { setAvail((await reader().did.isNameAvailable(name)) ? 'ok' : 'taken') } catch { setAvail('idle') }
+      try { setAvail((await reader().did.isRegionAvailable(region)) ? 'ok' : 'taken') } catch { setAvail('idle') }
     }, 350)
     return () => clearTimeout(t)
-  }, [name, nameBasicErr])
+  }, [region, regionBasicErr])
 
   const invalid = Object.values(errors).some(Boolean)
   const show = k => (submitted || f[k]) && errors[k]
@@ -235,16 +235,16 @@ function AddLocalGovt({ onAdded }) {
           <Field label="Wallet address *" error={show('wallet')}>
             <input className={`input mono${show('wallet') ? ' invalid' : ''}`} placeholder="0x…" value={f.wallet} onChange={set('wallet')} spellCheck={false} autoComplete="off" />
           </Field>
-          <Field label="Name *" error={show('name')} ok={!errors.name && avail === 'ok' ? '✓ Available' : ''}>
-            <input className={`input${show('name') ? ' invalid' : ''}`} placeholder="e.g. Jackson County Licensing Office" maxLength={64} value={f.name} onChange={set('name')} />
+          <Field label="Name *" error={show('name')} hint="Local Governments may share a name.">
+            <input className={`input${show('name') ? ' invalid' : ''}`} placeholder="e.g. Missouri Dept of Agriculture" maxLength={64} value={f.name} onChange={set('name')} />
           </Field>
-          <Field label="Region *" error={show('region')} hint="Pick a suggestion or type your own.">
+          <Field label="Region *" error={show('region')} ok={!errors.region && avail === 'ok' ? '✓ Available' : ''} hint="Each region can have only one Local Government.">
             <input className={`input${show('region') ? ' invalid' : ''}`} list="lg-regions" placeholder="e.g. Jackson County, MO" maxLength={64} value={f.region} onChange={set('region')} />
             <datalist id="lg-regions">{MO_REGIONS.map(r => <option key={r} value={r} />)}</datalist>
           </Field>
         </div>
         <div className="row-between">
-          <p className="faint small">MetaMask asks you to confirm twice: first to register the Local Government, then to grant its licence. Name and region are stored on-chain and cannot be changed later.</p>
+          <p className="faint small">MetaMask asks you to confirm twice: first to register the Local Government, then to grant its licence. The region must be unique (one Local Government per region); the name may repeat. Both are stored on-chain and cannot be changed later.</p>
           <Button type="submit" loading={busy === 'addlg'} disabled={!!busy}>🏢 Add Local Government</Button>
         </div>
       </form>

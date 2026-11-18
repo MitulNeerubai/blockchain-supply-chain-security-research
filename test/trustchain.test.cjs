@@ -449,7 +449,13 @@ describe("v5 - rootGA adds Local Governments, licence transfer, public product f
     expect(await did.hasRole(lg, "LocalGovt")).to.be.true;
 
     await expect(did.registerLocalGovt(lg, "Another Name", "Greene County, MO")).to.be.revertedWith("DIDRegistry: already registered");
-    await expect(did.registerLocalGovt(outsider, "city of kansas", "Greene County, MO")).to.be.revertedWith("DIDRegistry: company name already taken");
+    // Local Governments may SHARE a name - the region is the unique key instead.
+    await expect(did.registerLocalGovt(outsider, "city of kansas", "Jackson County, MO"))
+      .to.be.revertedWith("DIDRegistry: region already has a Local Government");
+    await did.registerLocalGovt(outsider, "city of kansas", "Greene County, MO"); // same name, different region - allowed
+    expect((await did.getDID(outsider)).companyName).to.equal("city of kansas");
+    expect(await did.isRegionAvailable("greene county, MO")).to.be.false;
+    expect(await did.isRegionAvailable("Boone County, MO")).to.be.true;
     // everyone else still self-registers, with an empty region
     await did.connect(mf).registerDID("Manufacturer", "Acme Corp");
     expect((await did.getDID(mf)).region).to.equal("");

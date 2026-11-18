@@ -3,17 +3,17 @@
   "chainId": 252501,
   "rpcUrl": "https://eth.didlab.org",
   "deployer": "0x71f15B6EC8fea94495B5608D2d48c73C060d488e",
-  "deployedAt": "2026-11-16T03:53:21.258Z",
-  "deployBlock": 7582789,
+  "deployedAt": "2026-11-18T03:21:45.966Z",
+  "deployBlock": 7668242,
   "contracts": {
     "custody": {
       "name": "Custody",
-      "address": "0xB940497914D828d7744407C84B1c0d5993B0e1eb",
+      "address": "0x03114960C5C632f8Ae890e7Ac5659f6143bCE59f",
       "abi": []
     },
     "audit": {
       "name": "AuditLog",
-      "address": "0xc4B1aC46227c4E913430da275e5553B43356AdAe",
+      "address": "0xf54B187465d4c92af01914Bf0860f70d49592c19",
       "abi": [
         {
           "inputs": [],
@@ -282,7 +282,7 @@
     },
     "trust": {
       "name": "TrustRegistry",
-      "address": "0x8aF11C42168E7eF98d44Ad87f0d35A64AFB7ACa7",
+      "address": "0x6F2740eb35bBef62E944cc2B1fa049c0D0e9f53d",
       "abi": [
         {
           "inputs": [],
@@ -521,7 +521,7 @@
     },
     "did": {
       "name": "DIDRegistry",
-      "address": "0x1228b5C4794B9769f4147405C391B7CDba57c2Ad",
+      "address": "0x3C1FfA49E313FeD1C8e2FE583B1D81Eea5349cb3",
       "abi": [
         {
           "inputs": [
@@ -898,6 +898,25 @@
           "inputs": [
             {
               "internalType": "string",
+              "name": "region",
+              "type": "string"
+            }
+          ],
+          "name": "isRegionAvailable",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "string",
               "name": "role",
               "type": "string"
             }
@@ -941,6 +960,25 @@
             }
           ],
           "name": "nameOwner",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "bytes32",
+              "name": "",
+              "type": "bytes32"
+            }
+          ],
+          "name": "regionOwner",
           "outputs": [
             {
               "internalType": "address",
@@ -1022,7 +1060,7 @@
     },
     "cred": {
       "name": "CredentialRegistry",
-      "address": "0x82Fe157F88C403c1CA4C9F6f9DC7737DaB9EC411",
+      "address": "0xDF727de55090e95D8cC6405CE2695047d3902795",
       "abi": [
         {
           "inputs": [
@@ -1725,7 +1763,7 @@
     },
     "pt": {
       "name": "ProductTransfer",
-      "address": "0xC7613Ee7114c4c5f82A29ECf35F0A61bF6dcfbD1",
+      "address": "0x8A522Fb6331cf755810cf20B23c7BA61acd15Fa3",
       "abi": [
         {
           "inputs": [
@@ -3070,7 +3108,7 @@
     },
     "ta": {
       "name": "TraceabilityAudit",
-      "address": "0x41c1378EF8a295de2CBddD973e4E757Ea0B85F51",
+      "address": "0x756c61a35657C886CB7bed2337428995d6CF41a4",
       "abi": [
         {
           "inputs": [

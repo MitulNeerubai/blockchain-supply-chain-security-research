@@ -7,9 +7,10 @@ import "./AuditLog.sol";
 
 /// @title DIDRegistry - on-chain identities with a unique company name
 /// @notice Manufacturers, Distributors and Retailers self-register one DID.
+///         Their company name is stored on-chain and is unique (case-insensitive).
 ///         Local Governments do NOT self-register: rootGA adds them (wallet,
-///         name and region) with `registerLocalGovt`. The company name is stored
-///         on-chain and is unique (case-insensitive).
+///         name and region) with `registerLocalGovt`. Local Governments MAY share
+///         a name; their region is the unique key instead (one LG per region).
 contract DIDRegistry {
     TrustRegistry public immutable trustRegistry;
     AuditLog      public immutable auditLog;
@@ -28,6 +29,8 @@ contract DIDRegistry {
     mapping(string  => address)     public didToAddress;
     /// keccak256(lowercase(companyName)) => owner. Names stay reserved after deactivation.
     mapping(bytes32 => address)     public nameOwner;
+    /// keccak256(lowercase(region)) => Local Government. One LG per region; stays reserved after deactivation.
+    mapping(bytes32 => address)     public regionOwner;
     address[] private _controllers;
 
     event DIDRegistered(address indexed controller, string did, string role, string companyName, uint256 timestamp);
@@ -44,7 +47,7 @@ contract DIDRegistry {
         require(msg.sender != trustRegistry.rootGA(), "DIDRegistry: rootGA does not register a DID");
         require(isValidRole(role), "DIDRegistry: invalid role");
         require(!_eq(role, "LocalGovt"), "DIDRegistry: Local Governments are added by the Root Authority");
-        _register(msg.sender, role, companyName, "");
+        _register(msg.sender, role, companyName, "", false);
     }
 
     /// @notice rootGA creates the DID of a Local Government on its behalf.
@@ -55,15 +58,23 @@ contract DIDRegistry {
         bytes memory r = bytes(region);
         require(r.length >= 2 && r.length <= 64 && r[0] != 0x20 && r[r.length - 1] != 0x20,
             "DIDRegistry: region is required (2-64 characters)");
-        _register(wallet, "LocalGovt", name, region);
+        _register(wallet, "LocalGovt", name, region, true);
     }
 
-    function _register(address who, string memory role, string calldata companyName, string memory region) internal {
+    function _register(address who, string memory role, string calldata companyName, string memory region, bool isLG) internal {
         require(bytes(_docs[who].did).length == 0, "DIDRegistry: already registered");
         _validateName(companyName);
 
-        bytes32 key = nameKey(companyName);
-        require(nameOwner[key] == address(0), "DIDRegistry: company name already taken");
+        if (isLG) {
+            // Local Governments may share a name - their region is the unique key instead.
+            bytes32 rkey = nameKey(region);
+            require(regionOwner[rkey] == address(0), "DIDRegistry: region already has a Local Government");
+            regionOwner[rkey] = who;
+        } else {
+            bytes32 key = nameKey(companyName);
+            require(nameOwner[key] == address(0), "DIDRegistry: company name already taken");
+            nameOwner[key] = who;
+        }
 
         string memory did = string.concat("did:besu:", Strings.toHexString(who));
         _docs[who] = DIDDocument({
@@ -71,7 +82,6 @@ contract DIDRegistry {
             controller: who, createdAt: block.timestamp, active: true, region: region
         });
         didToAddress[did] = who;
-        nameOwner[key]    = who;
         _controllers.push(who);
 
         auditLog.logAction(who, "DID_REGISTERED", string.concat("role=", role, " company=", companyName));
@@ -106,6 +116,11 @@ contract DIDRegistry {
 
     function isNameAvailable(string calldata companyName) external view returns (bool) {
         return nameOwner[nameKey(companyName)] == address(0);
+    }
+
+    /// @notice True if no Local Government has claimed this region yet (case-insensitive).
+    function isRegionAvailable(string calldata region) external view returns (bool) {
+        return regionOwner[nameKey(region)] == address(0);
     }
 
     function totalDIDs() external view returns (uint256) { return _controllers.length; }

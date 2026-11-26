@@ -566,3 +566,69 @@ describe("v5 - rootGA adds Local Governments, licence transfer, public product f
     expect(p.publicFields).to.equal(0n);
   });
 });
+
+describe("v6 - licence request / apply flow", () => {
+  it("DT applies to MF, MF approves, and the request auto-clears", async () => {
+    const { did, cred, mf, dt2 } = await fullChain();
+    await did.connect(dt2).registerDID("Distributor", "Applicant Dist");
+    await expect(cred.connect(dt2).requestLicence(mf))
+      .to.emit(cred, "LicenceRequested").withArgs(mf.address, dt2.address, "Distributor");
+    expect(await cred.getRequests(mf)).to.deep.equal([dt2.address]);
+    expect(await cred.hasRequested(mf, dt2)).to.be.true;
+    expect(await cred.getRequestCount(mf)).to.equal(1n);
+
+    await expect(cred.connect(mf).issueCredential(dt2, await expiry()))
+      .to.emit(cred, "LicenceRequestClosed").withArgs(mf.address, dt2.address, "approved");
+    expect(await cred.getRequests(mf)).to.deep.equal([]);
+    expect(await cred.hasRequested(mf, dt2)).to.be.false;
+    expect(await cred.isLicensedBy(dt2, mf)).to.be.true;
+  });
+
+  it("RT applies to DT; only valid role pairings are allowed", async () => {
+    const { did, cred, mf, dt, rt2 } = await fullChain();
+    await did.connect(rt2).registerDID("Retailer", "Applicant Shop");
+    await cred.connect(rt2).requestLicence(dt);
+    expect(await cred.getRequests(dt)).to.deep.equal([rt2.address]);
+    await expect(cred.connect(rt2).requestLicence(mf))
+      .to.be.revertedWith("CredentialRegistry: that company cannot license your role");
+  });
+
+  it("rejects self, duplicate, and already-licensed requests", async () => {
+    const { did, cred, mf, dt, dt2 } = await fullChain();
+    await expect(cred.connect(dt).requestLicence(mf))
+      .to.be.revertedWith("CredentialRegistry: they already issued you an active licence");
+    await did.connect(dt2).registerDID("Distributor", "Applicant Dist");
+    await expect(cred.connect(dt2).requestLicence(dt2))
+      .to.be.revertedWith("CredentialRegistry: cannot request a licence from yourself");
+    await cred.connect(dt2).requestLicence(mf);
+    await expect(cred.connect(dt2).requestLicence(mf))
+      .to.be.revertedWith("CredentialRegistry: you already applied to this company");
+  });
+
+  it("applicant can cancel; issuer can decline", async () => {
+    const { did, cred, mf, dt2 } = await fullChain();
+    await did.connect(dt2).registerDID("Distributor", "Dist A");
+    await cred.connect(dt2).requestLicence(mf);
+    await expect(cred.connect(dt2).cancelRequest(mf))
+      .to.emit(cred, "LicenceRequestClosed").withArgs(mf.address, dt2.address, "withdrawn");
+    expect(await cred.getRequestCount(mf)).to.equal(0n);
+
+    await cred.connect(dt2).requestLicence(mf);
+    await expect(cred.connect(mf).declineRequest(dt2))
+      .to.emit(cred, "LicenceRequestClosed").withArgs(mf.address, dt2.address, "declined");
+    expect(await cred.hasRequested(mf, dt2)).to.be.false;
+    await expect(cred.connect(mf).declineRequest(dt2)).to.be.revertedWith("CredentialRegistry: no pending request");
+  });
+
+  it("MF applies to LG; a queue of applicants clears correctly (swap-and-pop)", async () => {
+    const { did, cred, lg, mf2, dt2 } = await fullChain();
+    await did.connect(mf2).registerDID("Manufacturer", "Applicant Mfg");
+    await did.connect(dt2).registerDID("Manufacturer", "Applicant Mfg 2");
+    await cred.connect(mf2).requestLicence(lg);
+    await cred.connect(dt2).requestLicence(lg);
+    expect(await cred.getRequests(lg)).to.deep.equal([mf2.address, dt2.address]);
+    await cred.connect(lg).issueCredential(mf2, await expiry());   // approve the first
+    expect(await cred.getRequests(lg)).to.deep.equal([dt2.address]); // the other stays
+    expect(await cred.hasRequested(lg, dt2)).to.be.true;
+  });
+});

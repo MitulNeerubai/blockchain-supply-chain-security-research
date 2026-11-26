@@ -48,9 +48,16 @@ contract CredentialRegistry {
     bytes32[] private _all;
     uint256 private _nonce;
 
+    // Licence applications: a holder asks a prospective issuer for a licence
+    // (MF→LG, DT→MF, RT→DT). The issuer approves by issuing, which clears it.
+    mapping(address => address[]) private _requests;                   // issuer => requesters
+    mapping(address => mapping(address => uint256)) private _reqIndex; // issuer => requester => index+1 (0 = none)
+
     event CredentialIssued(bytes32 indexed credentialId, address indexed issuer, address indexed holder, string credType, uint256 expiresAt);
     event CredentialRevoked(bytes32 indexed credentialId, address indexed revokedBy, address indexed holder);
     event LicencesTransferred(address indexed fromIssuer, address indexed toIssuer, uint256 moved, uint256 remaining);
+    event LicenceRequested(address indexed issuer, address indexed requester, string role);
+    event LicenceRequestClosed(address indexed issuer, address indexed requester, string reason);
 
     constructor(address _trustRegistry, address _didRegistry, address _auditLog) {
         trustRegistry = TrustRegistry(_trustRegistry);
@@ -71,8 +78,40 @@ contract CredentialRegistry {
         require(activeCredentialFrom(msg.sender, holder) == bytes32(0),
             "CredentialRegistry: you already gave this company an active licence. Revoke it first.");
 
-        return _issue(msg.sender, holder, credType, expiresAt);
+        credentialId = _issue(msg.sender, holder, credType, expiresAt);
+        _clearRequest(msg.sender, holder, "approved");   // approving a licence clears any pending request
     }
+
+    // ── Licence applications (request / approve / decline) ───────────────────
+    /// @notice A holder applies to a prospective issuer for a licence.
+    ///         Allowed pairings mirror the licence chain: MF→LG, DT→MF, RT→DT.
+    function requestLicence(address issuer) external {
+        require(issuer != msg.sender, "CredentialRegistry: cannot request a licence from yourself");
+        require(didRegistry.isActiveDID(msg.sender), "CredentialRegistry: register a DID before applying");
+        require(_canRequest(issuer, msg.sender), "CredentialRegistry: that company cannot license your role");
+        require(activeCredentialFrom(issuer, msg.sender) == bytes32(0), "CredentialRegistry: they already issued you an active licence");
+        require(_reqIndex[issuer][msg.sender] == 0, "CredentialRegistry: you already applied to this company");
+        _requests[issuer].push(msg.sender);
+        _reqIndex[issuer][msg.sender] = _requests[issuer].length;
+        emit LicenceRequested(issuer, msg.sender, didRegistry.getRole(msg.sender));
+    }
+
+    /// @notice The applicant withdraws their own pending request.
+    function cancelRequest(address issuer) external {
+        require(_reqIndex[issuer][msg.sender] != 0, "CredentialRegistry: no pending request");
+        _clearRequest(issuer, msg.sender, "withdrawn");
+    }
+
+    /// @notice The issuer declines a pending request without issuing a licence.
+    function declineRequest(address requester) external {
+        require(_reqIndex[msg.sender][requester] != 0, "CredentialRegistry: no pending request");
+        _clearRequest(msg.sender, requester, "declined");
+    }
+
+    /// @notice Addresses currently applying to `issuer` for a licence.
+    function getRequests(address issuer) external view returns (address[] memory) { return _requests[issuer]; }
+    function getRequestCount(address issuer) external view returns (uint256) { return _requests[issuer].length; }
+    function hasRequested(address issuer, address requester) external view returns (bool) { return _reqIndex[issuer][requester] != 0; }
 
     /// @notice rootGA hands the live Manufacturing Licences of one Local Government
     ///         to another LG that is currently licensed. Each licence is re-issued by
@@ -287,5 +326,25 @@ contract CredentialRegistry {
     function _issuerTrusted(address issuer) internal view returns (bool) {
         if (didRegistry.hasRole(issuer, "LocalGovt")) return trustRegistry.isAuthorizedIssuer(issuer);
         return isCredentialValid(issuer);
+    }
+
+    /// True if `issuer`'s role is allowed to license `requester`'s role.
+    function _canRequest(address issuer, address requester) internal view returns (bool) {
+        if (didRegistry.hasRole(issuer, "LocalGovt"))    return didRegistry.hasRole(requester, "Manufacturer");
+        if (didRegistry.hasRole(issuer, "Manufacturer")) return didRegistry.hasRole(requester, "Distributor");
+        if (didRegistry.hasRole(issuer, "Distributor"))  return didRegistry.hasRole(requester, "Retailer");
+        return false;
+    }
+
+    /// Remove a pending request (swap-and-pop), if one exists.
+    function _clearRequest(address issuer, address requester, string memory reason) internal {
+        uint256 idx = _reqIndex[issuer][requester];
+        if (idx == 0) return;
+        address[] storage arr = _requests[issuer];
+        uint256 last = arr.length;
+        if (idx != last) { address moved = arr[last - 1]; arr[idx - 1] = moved; _reqIndex[issuer][moved] = idx; }
+        arr.pop();
+        _reqIndex[issuer][requester] = 0;
+        emit LicenceRequestClosed(issuer, requester, reason);
     }
 }

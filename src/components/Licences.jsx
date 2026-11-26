@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { reader, loadIssuedBy, loadMyLicences } from '../lib/chain'
+import { reader, loadIssuedBy, loadMyLicences, loadRequestsFor } from '../lib/chain'
 import { useDirectory, useLoad, useNetwork, useSession, useTx } from '../lib/app'
 import { DAY, ISSUER_OF, LICENSES, LICENSE_LABEL, ROLE_LABEL, daysLeft, fmtDate, nowSec, short, sameAddr } from '../lib/format'
 import { Alert, Button, Card, CompanyLink, CredPill, Empty, Entity, Field, Loading, Pill } from './ui'
@@ -103,6 +103,53 @@ export function useActiveLicensees() {
 }
 
 /**
+ * Issuer side: companies that applied to you for a licence (pull/apply flow).
+ * Approve issues the licence (with the panel's expiry); decline removes the request.
+ */
+function RequestsInbox({ days, onApproved }) {
+  const s = useSession()
+  const d = useDirectory()
+  const { run, busy } = useTx()
+  const reqs = useLoad(() => loadRequestsFor(s.address), [s.address])
+  const list = reqs.data || []
+  if (!reqs.loading && !list.length) return null
+
+  const approve = addr => {
+    const n = Number(days)
+    if (!(n >= 1 && n <= 3650)) return
+    const expires = BigInt(nowSec() + n * DAY)
+    return run('approve:' + addr, () => s.write.cred.issueCredential(addr, expires), {
+      success: `${d.name(addr)} approved and licensed.`,
+      onDone: async () => { await reqs.reload(); await onApproved?.() },
+    })
+  }
+  const decline = addr => run('decline:' + addr, () => s.write.cred.declineRequest(addr), {
+    success: `Declined ${d.name(addr)}'s request.`, onDone: reqs.reload,
+  })
+
+  return (
+    <Card title="Licence requests" subtitle={`${list.length} compan${list.length === 1 ? 'y has' : 'ies have'} applied. Approve to issue the licence (uses the expiry you set below).`}>
+      {reqs.loading ? <Loading /> : (
+        <div className="lic-list">
+          {list.map(addr => {
+            const who = d.get(addr)
+            return (
+              <div className="lic-row" key={addr}>
+                <Entity address={addr} name={who?.company} role={who?.role} size={28} />
+                <div className="row" style={{ gap: 8 }}>
+                  <Button size="sm" loading={busy === 'approve:' + addr} disabled={!!busy} onClick={() => approve(addr)}>✓ Approve</Button>
+                  <Button variant="ghost" size="sm" loading={busy === 'decline:' + addr} disabled={!!busy} onClick={() => decline(addr)}>Decline</Button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+/**
  * Issue / revoke licences to the next role down the chain.
  * LG → Manufacturers, Manufacturer → Distributors, Distributor → Retailers.
  */
@@ -152,6 +199,7 @@ export function LicencePanel({ standing, onChange }) {
 
   return (
     <div className="stack">
+      <RequestsInbox days={days} onApproved={async () => { await Promise.all([issued.reload(), candidates.reload()]); onChange?.() }} />
       <Card title={`License a ${targetLabel}`} subtitle={`Issue a ${cfg.label}. Lists registered ${targetLabel}s that do not hold an active licence from you yet${s.role === 'LocalGovt' ? '' : ' (they may also work for others)'}.`}>
         {!canIssue && !standing.loading && (
           <div style={{ marginBottom: 14 }}>
@@ -226,5 +274,58 @@ export function LicencePanel({ standing, onChange }) {
           )}
       </Card>
     </div>
+  )
+}
+
+/**
+ * Holder side: apply to a prospective issuer for a licence (pull/apply flow).
+ * Manufacturer → Local Governments, Distributor → Manufacturers, Retailer → Distributors.
+ * Renders nothing for Local Governments (they are licensed by the Root Authority).
+ */
+export function LicenceApply() {
+  const s = useSession()
+  const d = useDirectory()
+  const net = useNetwork()
+  const { run, busy } = useTx()
+  const issuerRole = ISSUER_OF[s.role]
+  const licName = s.role === 'Manufacturer' ? 'Manufacturing License' : 'Trade License'
+
+  const data = useLoad(async () => {
+    if (!issuerRole) return []
+    const { cred } = reader()
+    const list = d.byRole(issuerRole).filter(x => x.active)
+    const [lic, req] = await Promise.all([
+      Promise.all(list.map(x => cred.isLicensedBy(s.address, x.address))),
+      Promise.all(list.map(x => cred.hasRequested(x.address, s.address))),
+    ])
+    return list.map((x, i) => ({ ...x, licensed: lic[i], requested: req[i] }))
+  }, [d.dir, s.address, s.role, net.creds])
+
+  if (!issuerRole) return null
+  const rows = (data.data || []).filter(x => !x.licensed)   // only ones that have not licensed me yet
+  if (!data.loading && !rows.length) return null
+
+  const apply = x => run('apply:' + x.address, () => s.write.cred.requestLicence(x.address), {
+    success: `Applied to ${x.company}. They will see your request in their dashboard.`, onDone: data.reload,
+  })
+  const withdraw = x => run('withdraw:' + x.address, () => s.write.cred.cancelRequest(x.address), {
+    success: `Withdrew your application to ${x.company}.`, onDone: data.reload,
+  })
+
+  return (
+    <Card title={`Apply for a ${licName}`} subtitle={`Send a request to a ${ROLE_LABEL[issuerRole]}; they approve it by issuing your licence.`}>
+      {data.loading ? <Loading>Loading {ROLE_LABEL[issuerRole].toLowerCase()}s…</Loading> : (
+        <div className="lic-list">
+          {rows.map(x => (
+            <div className="lic-row" key={x.address}>
+              <Entity address={x.address} name={x.company} role={x.role} size={28} />
+              {x.requested
+                ? <div className="row" style={{ gap: 8 }}><Pill tone="amber" dot>Applied</Pill><Button variant="ghost" size="sm" loading={busy === 'withdraw:' + x.address} disabled={!!busy} onClick={() => withdraw(x)}>Withdraw</Button></div>
+                : <Button size="sm" loading={busy === 'apply:' + x.address} disabled={!!busy} onClick={() => apply(x)}>Apply</Button>}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }

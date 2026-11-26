@@ -5,7 +5,7 @@ import { useLoad, useSession, useTx } from '../lib/app'
 import { ALL_PUBLIC, PRODUCT_LIMITS, PUBLIC_FIELDS, sameAddr, validateProduct } from '../lib/format'
 import { Alert, Button, Card, Empty, Field, Loading, Stat, Tabs } from '../components/ui'
 import { PageHead } from '../components/Layout'
-import { LicenceBanner, LicencePanel, useActiveLicensees, useStanding } from '../components/Licences'
+import { LicenceApply, LicenceBanner, LicencePanel, useActiveLicensees, useStanding } from '../components/Licences'
 import { ProductLookup } from '../components/Products'
 import { EmailSettings } from '../components/EmailSettings'
 import DashFrame from '../components/DashFrame'
@@ -124,6 +124,7 @@ export default function Manufacturer() {
     <DashFrame facts={facts} onGo={setTab}>
       <PageHead session={s} title={s.company} />
       <div style={{ marginBottom: 20 }}><LicenceBanner standing={standing} /></div>
+      {!canCreate && <div style={{ marginBottom: 20 }}><LicenceApply /></div>}
 
       <div className="grid grid-stats" style={{ marginBottom: 20 }}>
         <Stat label="In stock" value={groups.stock.length} />

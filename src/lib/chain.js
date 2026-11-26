@@ -159,6 +159,11 @@ export async function loadIssuedBy(address) {
   return loadCredentials(await cred.getCredentialsByIssuer(address))
 }
 
+/** Addresses currently applying to `issuer` for a licence (pull/apply flow). */
+export async function loadRequestsFor(issuer) {
+  return reader().cred.getRequests(issuer)
+}
+
 /** Public: every credential + LG authorisations - the whole trust network in 3 calls. */
 export async function loadNetwork() {
   const { cred, trust } = reader()

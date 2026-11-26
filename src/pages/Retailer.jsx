@@ -4,7 +4,7 @@ import { useDirectory, useLoad, useSession, useTx } from '../lib/app'
 import { KIND, errMsg, sameAddr } from '../lib/format'
 import { Alert, Button, Card, Empty, Entity, Loading, Stat, Tabs } from '../components/ui'
 import { PageHead } from '../components/Layout'
-import { LicenceBanner, useStanding } from '../components/Licences'
+import { LicenceApply, LicenceBanner, useStanding } from '../components/Licences'
 import { AuditVerdict, ProductLookup } from '../components/Products'
 import { EmailSettings } from '../components/EmailSettings'
 import DashFrame from '../components/DashFrame'
@@ -47,6 +47,7 @@ export default function Retailer() {
     <DashFrame facts={facts} onGo={setTab}>
       <PageHead session={s} title={s.company} />
       <div style={{ marginBottom: 20 }}><LicenceBanner standing={standing} /></div>
+      <div style={{ marginBottom: 20 }}><LicenceApply /></div>
 
       <div className="grid grid-stats" style={{ marginBottom: 20 }}>
         <Stat label="Incoming" value={incoming.data?.length ?? '…'} hint="awaiting your confirmation" />

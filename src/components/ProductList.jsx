@@ -19,6 +19,7 @@ export function ProductItem({ p, actions, foot, warn }) {
             <span className="pid">#{p.id}</span>
             <StatusPill status={p.status} />
             {p.last?.kind === KIND.RETURN && p.status === 1 && <Pill tone="amber">Return</Pill>}
+            {p.parent && <Pill tone="blue">Split from #{p.parent}</Pill>}
           </div>
           <div className="item-meta">
             <span>📍 {locationOf(p, s?.address, d.name)}</span>
@@ -91,6 +92,30 @@ export function ShipForm({ product, partners, partnerLabel, onShipped }) {
       <Button variant="success" disabled={!to || !!busy} loading={busy === key}
         onClick={() => run(key, () => s.write.pt.shipTo(product.id, to), { success: `Shipped “${product.name}” to ${d.name(to)}.`, onDone: onShipped })}>
         Ship →
+      </Button>
+    </div>
+  )
+}
+
+/** Split a product into two (four-level packaging). */
+export function SplitForm({ product, onSplit }) {
+  const s = useSession()
+  const { run, busy } = useTx()
+  const [qty, setQty] = useState('')
+  const max = Number(product.quantity) - 1
+  const n = Number(qty)
+  const valid = n >= 1 && n <= max && Number.isInteger(n)
+  const key = 'split:' + product.id
+  return (
+    <div className="ship-row">
+      <input className="input" type="number" min="1" max={max} step="1" placeholder={`Split off 1-${max} units…`}
+        value={qty} onChange={e => setQty(e.target.value)} style={{ maxWidth: 200 }} />
+      <Button variant="secondary" disabled={!valid || !!busy} loading={busy === key}
+        onClick={() => run(key, () => s.write.pt.splitProduct(product.id, n), {
+          success: `Split ${n} unit${n > 1 ? 's' : ''} from "${product.name}" into a new product.`,
+          onDone: async () => { setQty(''); await onSplit?.() },
+        })}>
+        Split
       </Button>
     </div>
   )

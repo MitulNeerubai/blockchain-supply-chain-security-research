@@ -35,6 +35,9 @@ contract ProductTransfer is ERC721 {
     mapping(address => mapping(uint256 => bool)) private _shipIndexed;
     /// manufacturer => case-insensitive batch key => product id using it (0 = free)
     mapping(address => mapping(bytes32 => uint256)) private _batchUsedBy;
+    /// Four-level packaging: parent/child links for split products.
+    mapping(uint256 => uint256)   private _parentOf;
+    mapping(uint256 => uint256[]) private _childrenOf;
 
     event ProductCreated(uint256 indexed id, address indexed manufacturer, string name);
     event ProductDeleted(uint256 indexed id, address indexed manufacturer);
@@ -46,6 +49,7 @@ contract ProductTransfer is ERC721 {
     event ShipmentReverted(uint256 indexed id, address indexed sender, address indexed recipient, string reason);
     event ProductForceRecalled(uint256 indexed id, address indexed by, address indexed from);
     event ProductReclaimed(uint256 indexed id, address indexed from, address indexed to, string reason);
+    event ProductSplit(uint256 indexed parentId, uint256 indexed childId, uint256 quantity, address indexed by);
 
     constructor(address _credRegistry, address _didRegistry, address _auditLog)
         ERC721("Supply Chain Product", "SCP")
@@ -97,6 +101,7 @@ contract ProductTransfer is ERC721 {
     function deleteProduct(uint256 productId) external productExists(productId) {
         Custody.Product storage p = _products[productId];
         Custody.checkDelete(p, _history[productId], msg.sender);
+        require(_childrenOf[productId].length == 0, "ProductTransfer: product has been split; delete the child products first");
         delete _batchUsedBy[msg.sender][Custody.batchKey(p.batchNumber)];   // batch number can be reused
         p.status        = Custody.Status.Deleted;
         p.currentHolder = address(0);
@@ -203,6 +208,46 @@ contract ProductTransfer is ERC721 {
         emit ProductReclaimed(productId, holder, target, reason);
     }
 
+    // ── Split (four-level packaging) ──────────────────────────────────────
+    /// @notice Split `qty` units off a product into a new child token. The
+    ///         child inherits the parent's name, batch, description and
+    ///         manufacturer. Only the current holder (with a valid licence)
+    ///         can split a product that is in stock.
+    function splitProduct(uint256 productId, uint256 qty) external productExists(productId) returns (uint256 childId) {
+        Custody.Product storage p = _products[productId];
+        require(p.currentHolder == msg.sender, "ProductTransfer: not current holder");
+        require(p.status == Custody.Status.InStock, "ProductTransfer: product must be in stock to split");
+        require(qty > 0 && qty < p.quantity, "ProductTransfer: split quantity must be between 1 and total minus 1");
+        require(credRegistry.isCredentialValid(msg.sender), "ProductTransfer: no valid credential");
+
+        p.quantity -= qty;
+
+        childId = _nextId++;
+        _products[childId] = Custody.Product({
+            id: childId,
+            name: p.name,
+            ipfsCID: p.ipfsCID,
+            manufacturer: p.manufacturer,
+            currentHolder: msg.sender,
+            pendingRecipient: address(0),
+            status: Custody.Status.InStock,
+            createdAt: block.timestamp,
+            quantity: qty,
+            description: p.description,
+            batchNumber: p.batchNumber,
+            publicFields: p.publicFields
+        });
+
+        _parentOf[childId] = productId;
+        _childrenOf[productId].push(childId);
+        _manufacturerProducts[p.manufacturer].push(childId);
+        _indexHolder(msg.sender, childId);
+        _mint(msg.sender, childId);
+
+        _log("PRODUCT_SPLIT", productId, string.concat("childId=", Strings.toString(childId), " qty=", Strings.toString(qty)));
+        emit ProductSplit(productId, childId, qty, msg.sender);
+    }
+
     // ── Views ───────────────────────────────────────────────────────────────
     function getProduct(uint256 productId) external view productExists(productId) returns (Custody.Product memory) { return _products[productId]; }
     function getTransferHistory(uint256 productId) external view productExists(productId) returns (Custody.TransferRecord[] memory) { return _history[productId]; }
@@ -233,6 +278,29 @@ contract ProductTransfer is ERC721 {
 
     /// @notice The party that shipped the product to `who` most recently (0x0 if none).
     function shipperTo(uint256 productId, address who) external view returns (address) { return Custody.shipperTo(_history[productId], who); }
+
+    // ── Packaging views ────────────────────────────────────────────────────
+    /// @notice Parent token (0 for an original product, non-zero for a split child).
+    function getParent(uint256 productId) external view returns (uint256) { return _parentOf[productId]; }
+    /// @notice Direct children created by splitProduct.
+    function getChildren(uint256 productId) external view returns (uint256[] memory) { return _childrenOf[productId]; }
+
+    /// @notice Walk from a product up to its root, e.g. [unit, box, case, pallet].
+    function getLineage(uint256 productId) external view productExists(productId) returns (uint256[] memory) {
+        uint256 depth = 0;
+        uint256 cur = productId;
+        while (_parentOf[cur] != 0) { cur = _parentOf[cur]; depth++; require(depth < 100, "ProductTransfer: lineage too deep"); }
+        uint256[] memory line = new uint256[](depth + 1);
+        cur = productId;
+        for (uint256 i = 0; i <= depth; i++) { line[i] = cur; cur = _parentOf[cur]; }
+        return line;
+    }
+
+    /// @notice Paper-6 deterministic packaging hash: keccak256(parentHash, serial).
+    ///         Use to generate pallet/case/box/unit IDs for QR codes.
+    function packagingHash(bytes32 parentHash, uint256 serial) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(parentHash, serial));
+    }
 
     // ── Internal ────────────────────────────────────────────────────────────
     function _send(Custody.Product storage p, address to, Custody.Kind kind, string memory note) internal {

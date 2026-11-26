@@ -9,7 +9,7 @@ import { ProductLookup } from '../components/Products'
 import { EmailSettings } from '../components/EmailSettings'
 import DashFrame from '../components/DashFrame'
 import {
-  CallBackBanner, CallBackButton, FilterChips, GroupBox, IncomingList, PairPill, ProductItem, ShipForm,
+  CallBackBanner, CallBackButton, FilterChips, GroupBox, IncomingList, PairPill, ProductItem, ShipForm, SplitForm,
   groupBy, useIncoming, useProductModals, useReclaimable, useReturn,
 } from '../components/ProductList'
 
@@ -65,7 +65,10 @@ export default function Distributor() {
         <CallBackButton p={p} info={rc.data?.[p.id]} onDone={reloadAll} />
         {p.status === 2 && !mine(p) && !rc.data?.[p.id]?.ok && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'recall:' + p.id} onClick={() => recall(p)}>Force recall</Button>}
       </>}
-      foot={p.status === 0 && mine(p) && ok && <ShipForm product={p} partners={partners.data || []} partnerLabel="Retailer" onShipped={reloadAll} />}
+      foot={p.status === 0 && mine(p) && ok && (<>
+        <ShipForm product={p} partners={partners.data || []} partnerLabel="Retailer" onShipped={reloadAll} />
+        {Number(p.quantity) > 1 && <SplitForm product={p} onSplit={reloadAll} />}
+      </>)}
     />
   )
 

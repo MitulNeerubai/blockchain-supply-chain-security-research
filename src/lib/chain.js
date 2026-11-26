@@ -183,7 +183,7 @@ function normRecord(r) {
   }
 }
 
-function normProduct(p, last) {
+function normProduct(p, last, parentId) {
   return {
     id: p.id.toString(),
     name: p.name,
@@ -198,6 +198,7 @@ function normProduct(p, last) {
     batchNumber: p.batchNumber,
     publicFields: Number(p.publicFields ?? 15),
     last: last && Number(last.timestamp) > 0 ? normRecord(last) : null,
+    parent: parentId ? parentId.toString() : null,
   }
 }
 
@@ -209,8 +210,11 @@ export async function loadProducts(ids) {
   const out = []
   for (let i = 0; i < unique.length; i += CHUNK) {
     const part = unique.slice(i, i + CHUNK)
-    const [rows, lasts] = await Promise.all([pt.getProducts(part), pt.getLastRecords(part)])
-    rows.forEach((p, j) => { if (p.id !== 0n) out.push(normProduct(p, lasts[j])) })
+    const [rows, lasts, parents] = await Promise.all([
+      pt.getProducts(part), pt.getLastRecords(part),
+      Promise.all(part.map(id => pt.getParent(id).catch(() => 0n))),
+    ])
+    rows.forEach((p, j) => { if (p.id !== 0n) out.push(normProduct(p, lasts[j], parents[j])) })
   }
   return out.sort((a, b) => Number(b.id) - Number(a.id))
 }
@@ -223,9 +227,22 @@ export async function loadAllProducts() {
 
 export async function loadProduct(id) {
   const { pt } = reader()
-  const [p, h] = await Promise.all([pt.getProduct(id), pt.getTransferHistory(id)])
+  const [p, h, parentId, children] = await Promise.all([
+    pt.getProduct(id), pt.getTransferHistory(id),
+    pt.getParent(id).catch(() => 0n),
+    pt.getChildren(id).catch(() => []),
+  ])
   const history = h.map(normRecord)
-  return { ...normProduct(p, h[h.length - 1]), history }
+  return { ...normProduct(p, h[h.length - 1], parentId), history, children: children.map(c => c.toString()) }
+}
+
+export async function loadProductLineage(id) {
+  const { pt } = reader()
+  const ids = await pt.getLineage(id)
+  return Promise.all(ids.map(async i => {
+    const p = await pt.getProduct(i)
+    return { id: i.toString(), name: p.name, quantity: p.quantity.toString(), holder: p.currentHolder, status: Number(p.status) }
+  }))
 }
 
 /** For each product: can it be called back right now, and why. */

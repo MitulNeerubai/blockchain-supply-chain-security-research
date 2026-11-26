@@ -632,3 +632,166 @@ describe("v6 - licence request / apply flow", () => {
     expect(await cred.hasRequested(lg, dt2)).to.be.true;
   });
 });
+
+describe("v7 - four-level packaging (split + lineage)", () => {
+  const toDistributor = async ({ pt, mf, dt }, id) => {
+    await pt.connect(mf).shipTo(id, dt); await pt.connect(dt).confirmReceipt(id);
+  };
+
+  it("MF splits a 100-unit product into 60 + 40; parent/child links correct", async () => {
+    const { pt, mf } = await fullChain();
+    const tx = await pt.connect(mf).createProduct("Beef Pallet", "", 100, "100 units of beef", "BP-001", 15);
+    const rc = await tx.wait();
+    const parentId = rc.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
+      .find(e => e?.name === "ProductCreated").args.id;
+
+    const splitTx = await pt.connect(mf).splitProduct(parentId, 40);
+    const splitRc = await splitTx.wait();
+    const childId = splitRc.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
+      .find(e => e?.name === "ProductSplit").args.childId;
+
+    const parent = await pt.getProduct(parentId);
+    const child = await pt.getProduct(childId);
+    expect(parent.quantity).to.equal(60n);
+    expect(child.quantity).to.equal(40n);
+    expect(child.name).to.equal("Beef Pallet");
+    expect(child.manufacturer).to.equal(mf.address);
+    expect(child.batchNumber).to.equal("BP-001");
+    expect(child.currentHolder).to.equal(mf.address);
+    expect(child.status).to.equal(0n);
+
+    expect(await pt.getParent(childId)).to.equal(parentId);
+    expect(await pt.getParent(parentId)).to.equal(0n);
+    expect(await pt.getChildren(parentId)).to.deep.equal([childId]);
+    expect(await pt.getChildren(childId)).to.deep.equal([]);
+  });
+
+  it("split child can be shipped independently through the full chain", async () => {
+    const f = await fullChain();
+    const { pt, ta, mf, dt, rt } = f;
+    const parentId = await createProduct(pt, mf, "Pallet", "SP-001");
+    // Split 3 units off the 10-unit product
+    const splitTx = await pt.connect(mf).splitProduct(parentId, 3);
+    const splitRc = await splitTx.wait();
+    const childId = splitRc.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
+      .find(e => e?.name === "ProductSplit").args.childId;
+
+    expect((await pt.getProduct(parentId)).quantity).to.equal(7n);
+    expect((await pt.getProduct(childId)).quantity).to.equal(3n);
+
+    // Ship child MF -> DT -> RT
+    await pt.connect(mf).shipTo(childId, dt);
+    await pt.connect(dt).confirmReceipt(childId);
+    await pt.connect(dt).shipTo(childId, rt);
+    await pt.connect(rt).confirmReceipt(childId);
+
+    const cp = await pt.getProduct(childId);
+    expect(cp.currentHolder).to.equal(rt.address);
+    expect(cp.status).to.equal(2n); // Delivered
+
+    // Parent stays with MF
+    const pp = await pt.getProduct(parentId);
+    expect(pp.currentHolder).to.equal(mf.address);
+    expect(pp.status).to.equal(0n);
+
+    // Audit passes on the child
+    const audit = await ta.auditProduct(childId);
+    expect(audit.verified, audit.failReason).to.be.true;
+  });
+
+  it("distributor splits after receiving - ships portions to different retailers", async () => {
+    const f = await fullChain();
+    const { pt, did, cred, mf, dt, rt, rt2 } = f;
+    await did.connect(rt2).registerDID("Retailer", "Second Shop");
+    await cred.connect(dt).issueCredential(rt2, await expiry());
+
+    const id = await createProduct(pt, mf, "Big Pallet", "DS-001");
+    await toDistributor(f, id);
+
+    // DT splits into 4 + 6, ships each to a different RT
+    const s1 = await (await pt.connect(dt).splitProduct(id, 4)).wait();
+    const child1 = s1.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
+      .find(e => e?.name === "ProductSplit").args.childId;
+
+    await pt.connect(dt).shipTo(child1, rt);
+    await pt.connect(rt).confirmReceipt(child1);
+    await pt.connect(dt).shipTo(id, rt2); // remaining 6
+    await pt.connect(rt2).confirmReceipt(id);
+
+    expect((await pt.getProduct(child1)).currentHolder).to.equal(rt.address);
+    expect((await pt.getProduct(id)).currentHolder).to.equal(rt2.address);
+    expect((await pt.getProduct(child1)).quantity).to.equal(4n);
+    expect((await pt.getProduct(id)).quantity).to.equal(6n);
+  });
+
+  it("rejects invalid splits: not holder, not in stock, bad quantity, no licence", async () => {
+    const { pt, cred, lg, mf, dt } = await fullChain();
+    const id = await createProduct(pt, mf, "Widget", "IS-001");
+
+    await expect(pt.connect(dt).splitProduct(id, 3))
+      .to.be.revertedWith("ProductTransfer: not current holder");
+    await expect(pt.connect(mf).splitProduct(id, 0))
+      .to.be.revertedWith("ProductTransfer: split quantity must be between 1 and total minus 1");
+    await expect(pt.connect(mf).splitProduct(id, 10))
+      .to.be.revertedWith("ProductTransfer: split quantity must be between 1 and total minus 1");
+    await expect(pt.connect(mf).splitProduct(id, 11))
+      .to.be.revertedWith("ProductTransfer: split quantity must be between 1 and total minus 1");
+
+    // Can't split while in transit
+    await pt.connect(mf).shipTo(id, dt);
+    await expect(pt.connect(mf).splitProduct(id, 3))
+      .to.be.revertedWith("ProductTransfer: product must be in stock to split");
+
+    // Can't split without a valid licence
+    await pt.connect(mf).cancelShipment(id);
+    await cred.connect(lg).revokeCredential(await cred.activeCredentialOf(mf));
+    await expect(pt.connect(mf).splitProduct(id, 3))
+      .to.be.revertedWith("ProductTransfer: no valid credential");
+  });
+
+  it("cannot delete a product that has been split", async () => {
+    const { pt, mf } = await fullChain();
+    const id = await createProduct(pt, mf, "Splittable", "CD-001");
+    await pt.connect(mf).splitProduct(id, 3);
+    await expect(pt.connect(mf).deleteProduct(id))
+      .to.be.revertedWith("ProductTransfer: product has been split; delete the child products first");
+  });
+
+  it("getLineage walks from child to root", async () => {
+    const { pt, mf } = await fullChain();
+    const root = await createProduct(pt, mf, "Root", "LI-001");
+
+    const s1 = await (await pt.connect(mf).splitProduct(root, 5)).wait();
+    const mid = s1.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
+      .find(e => e?.name === "ProductSplit").args.childId;
+
+    const s2 = await (await pt.connect(mf).splitProduct(mid, 2)).wait();
+    const leaf = s2.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
+      .find(e => e?.name === "ProductSplit").args.childId;
+
+    const lineage = await pt.getLineage(leaf);
+    expect(lineage).to.deep.equal([leaf, mid, root]);
+
+    // Root's lineage is just itself
+    expect(await pt.getLineage(root)).to.deep.equal([root]);
+  });
+
+  it("packagingHash produces deterministic Paper-6 IDs", async () => {
+    const { pt } = await fullChain();
+    const palletHash = ethers.keccak256(ethers.solidityPacked(["bytes32", "uint256"], [ethers.ZeroHash, 1]));
+    expect(await pt.packagingHash(ethers.ZeroHash, 1)).to.equal(palletHash);
+    const caseHash = await pt.packagingHash(palletHash, 1);
+    const boxHash = await pt.packagingHash(caseHash, 1);
+    const unitHash = await pt.packagingHash(boxHash, 1);
+    // Each level produces a different hash
+    expect(new Set([palletHash, caseHash, boxHash, unitHash]).size).to.equal(4);
+  });
+
+  it("splitProduct gas is well under the block limit", async () => {
+    const { pt, mf } = await fullChain();
+    const id = await createProduct(pt, mf, "Gas Test", "GAS-001");
+    const tx = await pt.connect(mf).splitProduct(id, 5);
+    const rc = await tx.wait();
+    expect(rc.gasUsed).to.be.lessThan(700_000n);
+  });
+});

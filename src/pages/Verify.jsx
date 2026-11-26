@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { EXPLORER, CHAIN_NAME, loadAudit, loadProduct, reader } from '../lib/chain'
+import { EXPLORER, CHAIN_NAME, loadAudit, loadProduct, loadProductLineage, reader } from '../lib/chain'
 import { go, useDirectory, useNetwork } from '../lib/app'
 import { KIND, errMsg, fmtDate, isPublic } from '../lib/format'
 import { Alert, Button, Card, CompanyLink, CredPill, Entity, Loading, Pill } from '../components/ui'
@@ -26,6 +26,8 @@ export default function Verify({ productId }) {
   useEffect(() => { setId(productId || ''); if (productId) run(productId) }, [productId])
 
   const { product: p, audit: a } = state
+  const [lineage, setLineage] = useState(null)
+  useEffect(() => { setLineage(null); if (p?.parent || p?.children?.length) loadProductLineage(p.id).then(setLineage).catch(() => {}) }, [p?.id, p?.parent, p?.children?.length])
 
   // Each party with the licence that matters for THIS product (relationship-specific)
   const parties = []
@@ -88,6 +90,32 @@ export default function Verify({ productId }) {
                 )}
               </div>
             </Card>
+
+            {(p.parent || p.children?.length > 0) && (
+              <Card title="Packaging lineage" subtitle={p.parent ? `Split from product #${p.parent}` : `${p.children.length} split(s) from this product`}>
+                <div className="stack" style={{ gap: 8 }}>
+                  {lineage ? lineage.map((item, i) => (
+                    <div key={item.id} className="row" style={{ gap: 8, paddingLeft: i * 16 }}>
+                      <span style={{ opacity: 0.5 }}>{i === 0 ? '>' : '└'}</span>
+                      <a href={`#/product/${item.id}`} className="link"><b>#{item.id}</b> {item.name}</a>
+                      <span className="muted small">qty {item.quantity}</span>
+                      {String(item.id) === p.id && <Pill tone="blue">This product</Pill>}
+                    </div>
+                  )) : <span className="muted small">Loading lineage...</span>}
+                  {p.children?.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div className="muted small" style={{ marginBottom: 4 }}>Child products split from this one:</div>
+                      {p.children.map(cid => (
+                        <div key={cid} className="row" style={{ gap: 8, paddingLeft: 16 }}>
+                          <span style={{ opacity: 0.5 }}>└</span>
+                          <a href={`#/product/${cid}`} className="link">Product #{cid}</a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
 
             <Card title="Parties" subtitle="Each party and the licence it holds for this product, right now">
               <div className="stack" style={{ gap: 10 }}>

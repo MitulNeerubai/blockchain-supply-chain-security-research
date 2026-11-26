@@ -10,7 +10,7 @@ import { ProductLookup } from '../components/Products'
 import { EmailSettings } from '../components/EmailSettings'
 import DashFrame from '../components/DashFrame'
 import {
-  CallBackBanner, CallBackButton, FilterChips, IncomingList, ProductItem, ShipForm,
+  CallBackBanner, CallBackButton, FilterChips, IncomingList, ProductItem, ShipForm, SplitForm,
   canDelete, useDelete, useIncoming, useProductModals, useReclaimable,
 } from '../components/ProductList'
 
@@ -202,9 +202,10 @@ export default function Manufacturer() {
                 : shown.map(p => (
                   <ProductItem key={p.id} p={p} actions={actionsFor(p)}
                     warn={rc.data?.[p.id]?.ok ? rc.data[p.id].reason : null}
-                    foot={p.status === 0 && mine(p) && (
+                    foot={p.status === 0 && mine(p) && (<>
                       <ShipForm product={p} partners={partners.data || []} partnerLabel="Distributor" onShipped={reloadAll} />
-                    )} />
+                      {Number(p.quantity) > 1 && <SplitForm product={p} onSplit={reloadAll} />}
+                    </>)} />
                 ))}
             </Card>
           </div>

@@ -3,17 +3,17 @@
   "chainId": 252501,
   "rpcUrl": "https://eth.didlab.org",
   "deployer": "0x71f15B6EC8fea94495B5608D2d48c73C060d488e",
-  "deployedAt": "2026-11-18T03:21:45.966Z",
-  "deployBlock": 7668242,
+  "deployedAt": "2026-11-26T22:37:05.075Z",
+  "deployBlock": 8048501,
   "contracts": {
     "custody": {
       "name": "Custody",
-      "address": "0x03114960C5C632f8Ae890e7Ac5659f6143bCE59f",
+      "address": "0x9B2583802fA8CFEDDd0A42B723129798e9Da143A",
       "abi": []
     },
     "audit": {
       "name": "AuditLog",
-      "address": "0xf54B187465d4c92af01914Bf0860f70d49592c19",
+      "address": "0x3feD3428B7f14f014E638e0a14D5A6d7f39f11F7",
       "abi": [
         {
           "inputs": [],
@@ -282,7 +282,7 @@
     },
     "trust": {
       "name": "TrustRegistry",
-      "address": "0x6F2740eb35bBef62E944cc2B1fa049c0D0e9f53d",
+      "address": "0x0E180eD99fE444Cb9AAF30d513B26a042a60d9f8",
       "abi": [
         {
           "inputs": [],
@@ -521,7 +521,7 @@
     },
     "did": {
       "name": "DIDRegistry",
-      "address": "0x3C1FfA49E313FeD1C8e2FE583B1D81Eea5349cb3",
+      "address": "0x6c51FC79DA5bbC4Be4afF4D06b78Bad579199aac",
       "abi": [
         {
           "inputs": [
@@ -1060,7 +1060,7 @@
     },
     "cred": {
       "name": "CredentialRegistry",
-      "address": "0xDF727de55090e95D8cC6405CE2695047d3902795",
+      "address": "0xc5A7A36b4322fD6586B40080b44b972Bedf05410",
       "abi": [
         {
           "inputs": [
@@ -1159,6 +1159,56 @@
             }
           ],
           "name": "CredentialRevoked",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "requester",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "reason",
+              "type": "string"
+            }
+          ],
+          "name": "LicenceRequestClosed",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "requester",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "role",
+              "type": "string"
+            }
+          ],
+          "name": "LicenceRequested",
           "type": "event"
         },
         {
@@ -1272,6 +1322,32 @@
             }
           ],
           "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            }
+          ],
+          "name": "cancelRequest",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "requester",
+              "type": "address"
+            }
+          ],
+          "name": "declineRequest",
+          "outputs": [],
+          "stateMutability": "nonpayable",
           "type": "function"
         },
         {
@@ -1450,6 +1526,44 @@
           "inputs": [
             {
               "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            }
+          ],
+          "name": "getRequestCount",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            }
+          ],
+          "name": "getRequests",
+          "outputs": [
+            {
+              "internalType": "address[]",
+              "name": "",
+              "type": "address[]"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
               "name": "holder",
               "type": "address"
             },
@@ -1460,6 +1574,30 @@
             }
           ],
           "name": "hadLicenceAt",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "requester",
+              "type": "address"
+            }
+          ],
+          "name": "hasRequested",
           "outputs": [
             {
               "internalType": "bool",
@@ -1626,6 +1764,19 @@
         {
           "inputs": [
             {
+              "internalType": "address",
+              "name": "issuer",
+              "type": "address"
+            }
+          ],
+          "name": "requestLicence",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
               "internalType": "bytes32",
               "name": "credentialId",
               "type": "bytes32"
@@ -1763,7 +1914,7 @@
     },
     "pt": {
       "name": "ProductTransfer",
-      "address": "0x8A522Fb6331cf755810cf20B23c7BA61acd15Fa3",
+      "address": "0x9A33991D7e1C3675A4f09d32e0D009BCc2565ea4",
       "abi": [
         {
           "inputs": [
@@ -1887,22 +2038,6 @@
             }
           ],
           "name": "ERC721NonexistentToken",
-          "type": "error"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "value",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "length",
-              "type": "uint256"
-            }
-          ],
-          "name": "StringsInsufficientHexLength",
           "type": "error"
         },
         {
@@ -2147,6 +2282,37 @@
             }
           ],
           "name": "ProductShipped",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "parentId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "childId",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "quantity",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "by",
+              "type": "address"
+            }
+          ],
+          "name": "ProductSplit",
           "type": "event"
         },
         {
@@ -2534,6 +2700,25 @@
               "internalType": "uint256[]",
               "name": "",
               "type": "uint256[]"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "productId",
+              "type": "uint256"
+            }
+          ],
+          "name": "getParent",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
             }
           ],
           "stateMutability": "view",
@@ -3020,6 +3205,30 @@
         {
           "inputs": [
             {
+              "internalType": "uint256",
+              "name": "productId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "qty",
+              "type": "uint256"
+            }
+          ],
+          "name": "splitProduct",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "childId",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
               "internalType": "bytes4",
               "name": "interfaceId",
               "type": "bytes4"
@@ -3108,7 +3317,7 @@
     },
     "ta": {
       "name": "TraceabilityAudit",
-      "address": "0x756c61a35657C886CB7bed2337428995d6CF41a4",
+      "address": "0xc44e122710d022fB3146A55D03a2fB9D7Fc2C38e",
       "abi": [
         {
           "inputs": [

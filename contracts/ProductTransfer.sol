@@ -35,9 +35,8 @@ contract ProductTransfer is ERC721 {
     mapping(address => mapping(uint256 => bool)) private _shipIndexed;
     /// manufacturer => case-insensitive batch key => product id using it (0 = free)
     mapping(address => mapping(bytes32 => uint256)) private _batchUsedBy;
-    /// Four-level packaging: parent/child links for split products.
+    /// Four-level packaging: child → parent link for split products.
     mapping(uint256 => uint256)   private _parentOf;
-    mapping(uint256 => uint256[]) private _childrenOf;
 
     event ProductCreated(uint256 indexed id, address indexed manufacturer, string name);
     event ProductDeleted(uint256 indexed id, address indexed manufacturer);
@@ -91,7 +90,7 @@ contract ProductTransfer is ERC721 {
         _indexHolder(msg.sender, id);
         _mint(msg.sender, id);
 
-        _log("PRODUCT_CREATED", id, name);
+        _log("PRODUCT_CREATED", id);
         emit ProductCreated(id, msg.sender, name);
     }
 
@@ -101,12 +100,11 @@ contract ProductTransfer is ERC721 {
     function deleteProduct(uint256 productId) external productExists(productId) {
         Custody.Product storage p = _products[productId];
         Custody.checkDelete(p, _history[productId], msg.sender);
-        require(_childrenOf[productId].length == 0, "ProductTransfer: product has been split; delete the child products first");
         delete _batchUsedBy[msg.sender][Custody.batchKey(p.batchNumber)];   // batch number can be reused
         p.status        = Custody.Status.Deleted;
         p.currentHolder = address(0);
         _burn(productId);
-        _log("PRODUCT_DELETED", productId, "");
+        _log("PRODUCT_DELETED", productId);
         emit ProductDeleted(productId, msg.sender);
     }
 
@@ -116,7 +114,7 @@ contract ProductTransfer is ERC721 {
         Custody.checkShip(p, _history[productId], msg.sender, recipient, credRegistry, didRegistry);
 
         _send(p, recipient, Custody.Kind.Ship, "");
-        _log("PRODUCT_SHIPPED", productId, string.concat("to=", Strings.toHexString(recipient)));
+        _log("PRODUCT_SHIPPED", productId);
         emit ProductShipped(productId, msg.sender, recipient);
     }
 
@@ -127,7 +125,7 @@ contract ProductTransfer is ERC721 {
         Custody.Product storage p = _products[productId];
         address to = Custody.checkReturn(p, _history[productId], msg.sender, reason);
         _send(p, to, Custody.Kind.Return, reason);
-        _log("PRODUCT_RETURNED", productId, string.concat("to=", Strings.toHexString(to)));
+        _log("PRODUCT_RETURNED", productId);
         emit ProductReturned(productId, msg.sender, to, reason);
     }
 
@@ -151,7 +149,7 @@ contract ProductTransfer is ERC721 {
         }
         _transfer(prev, msg.sender, productId);
 
-        _log("PRODUCT_RECEIVED", productId, "");
+        _log("PRODUCT_RECEIVED", productId);
         emit ProductReceived(productId, msg.sender);
     }
 
@@ -162,7 +160,7 @@ contract ProductTransfer is ERC721 {
         require(p.status == Custody.Status.InTransit, "ProductTransfer: not in transit");
         address recipient = _cancelPending(p, "Cancelled by sender");
 
-        _log("SHIPMENT_CANCELLED", productId, "");
+        _log("SHIPMENT_CANCELLED", productId);
         emit ShipmentCancelled(productId, msg.sender, recipient);
     }
 
@@ -174,11 +172,11 @@ contract ProductTransfer is ERC721 {
         Custody.checkRecall(p, _history[productId], msg.sender, credRegistry, didRegistry);
         address prevHolder = p.currentHolder;
 
-        if (p.status == Custody.Status.InTransit) _cancelPending(p, "Cancelled by recall");
+        if (p.status == Custody.Status.InTransit) _cancelPending(p, "Recalled");
         if (prevHolder != msg.sender) {
-            _move(p, prevHolder, msg.sender, Custody.Kind.Recall, string.concat("Recalled by ", Custody.name(didRegistry, msg.sender)));
+            _move(p, prevHolder, msg.sender, Custody.Kind.Recall, "Recalled");
         }
-        _log("PRODUCT_FORCE_RECALLED", productId, string.concat("from=", Strings.toHexString(prevHolder)));
+        _log("PRODUCT_FORCE_RECALLED", productId);
         emit ProductForceRecalled(productId, msg.sender, prevHolder);
     }
 
@@ -198,13 +196,13 @@ contract ProductTransfer is ERC721 {
 
         if (p.status == Custody.Status.InTransit) {
             address recipient = _cancelPending(p, reason);
-            _log("SHIPMENT_REVERTED", productId, reason);
+            _log("SHIPMENT_REVERTED", productId);
             emit ShipmentReverted(productId, p.currentHolder, recipient, reason);
             return;
         }
         address holder = p.currentHolder;
         _move(p, holder, target, Custody.Kind.Reclaim, reason);
-        _log("PRODUCT_RECLAIMED", productId, string.concat("to=", Strings.toHexString(target)));
+        _log("PRODUCT_RECLAIMED", productId);
         emit ProductReclaimed(productId, holder, target, reason);
     }
 
@@ -216,8 +214,8 @@ contract ProductTransfer is ERC721 {
     function splitProduct(uint256 productId, uint256 qty) external productExists(productId) returns (uint256 childId) {
         Custody.Product storage p = _products[productId];
         require(p.currentHolder == msg.sender, "ProductTransfer: not current holder");
-        require(p.status == Custody.Status.InStock, "ProductTransfer: product must be in stock to split");
-        require(qty > 0 && qty < p.quantity, "ProductTransfer: split quantity must be between 1 and total minus 1");
+        require(p.status == Custody.Status.InStock, "ProductTransfer: not in stock");
+        require(qty > 0 && qty < p.quantity, "ProductTransfer: invalid split quantity");
         require(credRegistry.isCredentialValid(msg.sender), "ProductTransfer: no valid credential");
 
         p.quantity -= qty;
@@ -239,12 +237,11 @@ contract ProductTransfer is ERC721 {
         });
 
         _parentOf[childId] = productId;
-        _childrenOf[productId].push(childId);
         _manufacturerProducts[p.manufacturer].push(childId);
         _indexHolder(msg.sender, childId);
         _mint(msg.sender, childId);
 
-        _log("PRODUCT_SPLIT", productId, string.concat("childId=", Strings.toString(childId), " qty=", Strings.toString(qty)));
+        _log("PRODUCT_SPLIT", productId);
         emit ProductSplit(productId, childId, qty, msg.sender);
     }
 
@@ -282,25 +279,6 @@ contract ProductTransfer is ERC721 {
     // ── Packaging views ────────────────────────────────────────────────────
     /// @notice Parent token (0 for an original product, non-zero for a split child).
     function getParent(uint256 productId) external view returns (uint256) { return _parentOf[productId]; }
-    /// @notice Direct children created by splitProduct.
-    function getChildren(uint256 productId) external view returns (uint256[] memory) { return _childrenOf[productId]; }
-
-    /// @notice Walk from a product up to its root, e.g. [unit, box, case, pallet].
-    function getLineage(uint256 productId) external view productExists(productId) returns (uint256[] memory) {
-        uint256 depth = 0;
-        uint256 cur = productId;
-        while (_parentOf[cur] != 0) { cur = _parentOf[cur]; depth++; require(depth < 100, "ProductTransfer: lineage too deep"); }
-        uint256[] memory line = new uint256[](depth + 1);
-        cur = productId;
-        for (uint256 i = 0; i <= depth; i++) { line[i] = cur; cur = _parentOf[cur]; }
-        return line;
-    }
-
-    /// @notice Paper-6 deterministic packaging hash: keccak256(parentHash, serial).
-    ///         Use to generate pallet/case/box/unit IDs for QR codes.
-    function packagingHash(bytes32 parentHash, uint256 serial) external pure returns (bytes32) {
-        return keccak256(abi.encodePacked(parentHash, serial));
-    }
 
     // ── Internal ────────────────────────────────────────────────────────────
     function _send(Custody.Product storage p, address to, Custody.Kind kind, string memory note) internal {
@@ -334,8 +312,8 @@ contract ProductTransfer is ERC721 {
         if (!_heldIndexed[who][id]) { _heldIndexed[who][id] = true; _holderProducts[who].push(id); }
     }
 
-    function _log(string memory action, uint256 id, string memory extra) internal {
-        auditLog.logAction(msg.sender, action, string.concat("productId=", Strings.toString(id), bytes(extra).length > 0 ? " " : "", extra));
+    function _log(string memory action, uint256 id) internal {
+        auditLog.logAction(msg.sender, action, Strings.toString(id));
     }
 
     /// Products move only through this contract's functions - block direct ERC-721 transfers.

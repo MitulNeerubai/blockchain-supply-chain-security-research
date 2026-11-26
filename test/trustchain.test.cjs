@@ -230,7 +230,7 @@ describe("ProductTransfer", () => {
     expect((await pt.getProduct(id)).currentHolder).to.equal(mf.address);
     const h = await pt.getTransferHistory(id);
     expect(h.slice(-2).map(r => r.kind)).to.deep.equal([Kind.Recall, Kind.Recall]);
-    expect(h[h.length - 1].note).to.equal("Recalled by Acme Corp");
+    expect(h[h.length - 1].note).to.equal("Recalled");
   });
 
   it("writes to the audit log", async () => {
@@ -662,8 +662,6 @@ describe("v7 - four-level packaging (split + lineage)", () => {
 
     expect(await pt.getParent(childId)).to.equal(parentId);
     expect(await pt.getParent(parentId)).to.equal(0n);
-    expect(await pt.getChildren(parentId)).to.deep.equal([childId]);
-    expect(await pt.getChildren(childId)).to.deep.equal([]);
   });
 
   it("split child can be shipped independently through the full chain", async () => {
@@ -731,16 +729,16 @@ describe("v7 - four-level packaging (split + lineage)", () => {
     await expect(pt.connect(dt).splitProduct(id, 3))
       .to.be.revertedWith("ProductTransfer: not current holder");
     await expect(pt.connect(mf).splitProduct(id, 0))
-      .to.be.revertedWith("ProductTransfer: split quantity must be between 1 and total minus 1");
+      .to.be.revertedWith("ProductTransfer: invalid split quantity");
     await expect(pt.connect(mf).splitProduct(id, 10))
-      .to.be.revertedWith("ProductTransfer: split quantity must be between 1 and total minus 1");
+      .to.be.revertedWith("ProductTransfer: invalid split quantity");
     await expect(pt.connect(mf).splitProduct(id, 11))
-      .to.be.revertedWith("ProductTransfer: split quantity must be between 1 and total minus 1");
+      .to.be.revertedWith("ProductTransfer: invalid split quantity");
 
     // Can't split while in transit
     await pt.connect(mf).shipTo(id, dt);
     await expect(pt.connect(mf).splitProduct(id, 3))
-      .to.be.revertedWith("ProductTransfer: product must be in stock to split");
+      .to.be.revertedWith("ProductTransfer: not in stock");
 
     // Can't split without a valid licence
     await pt.connect(mf).cancelShipment(id);
@@ -749,15 +747,7 @@ describe("v7 - four-level packaging (split + lineage)", () => {
       .to.be.revertedWith("ProductTransfer: no valid credential");
   });
 
-  it("cannot delete a product that has been split", async () => {
-    const { pt, mf } = await fullChain();
-    const id = await createProduct(pt, mf, "Splittable", "CD-001");
-    await pt.connect(mf).splitProduct(id, 3);
-    await expect(pt.connect(mf).deleteProduct(id))
-      .to.be.revertedWith("ProductTransfer: product has been split; delete the child products first");
-  });
-
-  it("getLineage walks from child to root", async () => {
+  it("parent chain walkable via getParent (multi-level split)", async () => {
     const { pt, mf } = await fullChain();
     const root = await createProduct(pt, mf, "Root", "LI-001");
 
@@ -769,22 +759,10 @@ describe("v7 - four-level packaging (split + lineage)", () => {
     const leaf = s2.logs.map(l => { try { return pt.interface.parseLog(l); } catch { return null; } })
       .find(e => e?.name === "ProductSplit").args.childId;
 
-    const lineage = await pt.getLineage(leaf);
-    expect(lineage).to.deep.equal([leaf, mid, root]);
-
-    // Root's lineage is just itself
-    expect(await pt.getLineage(root)).to.deep.equal([root]);
-  });
-
-  it("packagingHash produces deterministic Paper-6 IDs", async () => {
-    const { pt } = await fullChain();
-    const palletHash = ethers.keccak256(ethers.solidityPacked(["bytes32", "uint256"], [ethers.ZeroHash, 1]));
-    expect(await pt.packagingHash(ethers.ZeroHash, 1)).to.equal(palletHash);
-    const caseHash = await pt.packagingHash(palletHash, 1);
-    const boxHash = await pt.packagingHash(caseHash, 1);
-    const unitHash = await pt.packagingHash(boxHash, 1);
-    // Each level produces a different hash
-    expect(new Set([palletHash, caseHash, boxHash, unitHash]).size).to.equal(4);
+    // Walk up: leaf -> mid -> root -> 0
+    expect(await pt.getParent(leaf)).to.equal(mid);
+    expect(await pt.getParent(mid)).to.equal(root);
+    expect(await pt.getParent(root)).to.equal(0n);
   });
 
   it("splitProduct gas is well under the block limit", async () => {

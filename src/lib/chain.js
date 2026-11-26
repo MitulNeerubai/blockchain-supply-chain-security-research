@@ -227,18 +227,21 @@ export async function loadAllProducts() {
 
 export async function loadProduct(id) {
   const { pt } = reader()
-  const [p, h, parentId, children] = await Promise.all([
+  const [p, h, parentId] = await Promise.all([
     pt.getProduct(id), pt.getTransferHistory(id),
     pt.getParent(id).catch(() => 0n),
-    pt.getChildren(id).catch(() => []),
   ])
+  const splits = await pt.queryFilter(pt.filters.ProductSplit(id)).catch(() => [])
+  const children = splits.map(e => e.args.childId.toString())
   const history = h.map(normRecord)
-  return { ...normProduct(p, h[h.length - 1], parentId), history, children: children.map(c => c.toString()) }
+  return { ...normProduct(p, h[h.length - 1], parentId), history, children }
 }
 
 export async function loadProductLineage(id) {
   const { pt } = reader()
-  const ids = await pt.getLineage(id)
+  const ids = []
+  let cur = BigInt(id)
+  while (cur !== 0n) { ids.push(cur); cur = await pt.getParent(cur).catch(() => 0n); if (ids.length > 50) break }
   return Promise.all(ids.map(async i => {
     const p = await pt.getProduct(i)
     return { id: i.toString(), name: p.name, quantity: p.quantity.toString(), holder: p.currentHolder, status: Number(p.status) }

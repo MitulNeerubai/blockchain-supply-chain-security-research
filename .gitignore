@@ -31,3 +31,6 @@
 /snapshots
 .env
 emails.json
+
+# local-chain benchmark artifacts
+deployments/localhost.json

@@ -15,7 +15,8 @@
     "node:local": "hardhat node",
     "deploy:local": "hardhat run deploy_all.cjs --network localhost",
     "deploy:besu": "hardhat run deploy_all.cjs --network besu",
-    "seed:local": "hardhat run scripts/seed_demo.cjs --network localhost"
+    "seed:local": "hardhat run scripts/seed_demo.cjs --network localhost",
+    "benchmark:local": "hardhat run scripts/benchmark.cjs --network localhost"
   },
   "dependencies": {
     "ethers": "^6.17.0",

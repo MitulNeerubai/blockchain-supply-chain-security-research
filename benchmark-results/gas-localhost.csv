@@ -1,0 +1,14 @@
+operation,count,avg_gas,total_gas
+registerLocalGovt,1,532975,532975
+authorizeIssuer,1,158895,158895
+registerDID(MF),10,476195,4761950
+registerDID(DT),10,476309,4763090
+registerDID(RT),50,476625,23831260
+issueCredential(LG->MF),10,613141,6131418
+issueCredential(MF->DT),10,653313,6533130
+issueCredential(DT->RT),50,667790,33389540
+createProduct,180,574136,103344584
+shipTo(MF->DT),180,462021,83163924
+confirmReceipt(DT),180,347082,62474904
+shipTo(DT->RT),180,484613,87230484
+confirmReceipt(RT),180,362659,65278764

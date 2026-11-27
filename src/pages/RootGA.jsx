@@ -47,10 +47,10 @@ export default function RootGA() {
   const targetsFor = lg => (lgs.data || []).filter(x => x.licensed && x.active && !sameAddr(x.address, lg.address))
 
   const grant = lg => run('grant:' + lg.address, () => s.write.trust.authorizeIssuer(lg.address, 'LocalGovt'), {
-    success: `${lg.company} now holds an LG licence.`, onDone: lgs.reload,
+    success: `${lg.company} now holds an LG licence.`, onDone: () => { d.refresh(); lgs.reload() },
   })
   const revoke = lg => run('revoke:' + lg.address, () => s.write.trust.revokeIssuer(lg.address), {
-    success: `LG licence of ${lg.company} revoked.`, onDone: lgs.reload,
+    success: `LG licence of ${lg.company} revoked.`, onDone: () => { d.refresh(); lgs.reload() },
   })
   const askRevoke = lg => (liveOf(lg).length ? setConfirmRevoke(lg) : revoke(lg))
 

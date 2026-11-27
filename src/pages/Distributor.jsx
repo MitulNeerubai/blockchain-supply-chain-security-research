@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { loadProducts, loadRequestsFor, reader } from '../lib/chain'
 import { useDirectory, useLoad, useNetwork, useSession, useTx } from '../lib/app'
-import { sameAddr } from '../lib/format'
+import { KIND, sameAddr } from '../lib/format'
 import { Alert, Button, Card, Empty, Entity, Loading, Stat, Tabs } from '../components/ui'
 import { PageHead } from '../components/Layout'
 import { LicenceApply, LicenceBanner, LicencePanel, useActiveLicensees, useStanding } from '../components/Licences'
@@ -29,15 +29,17 @@ export default function Distributor() {
   const requests = useLoad(() => loadRequestsFor(s.address), [s.address])
   const list = held.data || []
   const mine = p => sameAddr(p.holder, s.address)
+  const isReturn = p => p.status === 1 && p.last?.kind === KIND.RETURN
   const groups = {
     stock: list.filter(p => mine(p) && p.status === 0),
-    transit: list.filter(p => mine(p) && p.status === 1),
+    transit: list.filter(p => mine(p) && p.status === 1 && !isReturn(p)),
+    returning: list.filter(p => mine(p) && isReturn(p)),
     retail: list.filter(p => !mine(p) && p.status === 2 && d.get(p.holder)?.role === 'Retailer'),
   }
-  groups.all = [...groups.stock, ...groups.transit, ...groups.retail]
+  groups.all = [...groups.stock, ...groups.transit, ...groups.returning, ...groups.retail]
   const shown = groups[filter]
 
-  const watch = [...groups.transit, ...groups.retail]
+  const watch = [...groups.transit, ...groups.returning, ...groups.retail]
   const rc = useReclaimable(watch)
   const reloadAll = async () => { await Promise.all([held.reload(), incoming.reload()]); rc.reload() }
   const ret = useReturn(reloadAll)
@@ -66,10 +68,12 @@ export default function Distributor() {
         <CallBackButton p={p} info={rc.data?.[p.id]} onDone={reloadAll} />
         {p.status === 2 && !mine(p) && !rc.data?.[p.id]?.ok && <Button variant="danger" size="sm" disabled={!!busy} loading={busy === 'recall:' + p.id} onClick={() => recall(p)}>Force recall</Button>}
       </>}
-      foot={p.status === 0 && mine(p) && ok && (<>
-        <ShipForm product={p} partners={partners.data || []} partnerLabel="Retailer" onShipped={reloadAll} />
-        {Number(p.quantity) > 1 && <SplitForm product={p} onSplit={reloadAll} />}
-      </>)}
+      foot={p.status === 0 && mine(p) && ok && (
+        <div className="foot-actions">
+          <ShipForm product={p} partners={partners.data || []} partnerLabel="Retailer" onShipped={reloadAll} />
+          {Number(p.quantity) > 1 && <SplitForm product={p} onSplit={reloadAll} />}
+        </div>
+      )}
     />
   )
 
@@ -126,6 +130,7 @@ export default function Distributor() {
         <Stat label="Incoming" value={incoming.data?.length ?? '…'} hint="awaiting your confirmation" />
         <Stat label="In stock" value={groups.stock.length} />
         <Stat label="In transit" value={groups.transit.length} />
+        <Stat label="Returning" value={groups.returning.length} hint="being sent back" />
         <Stat label="At retailers" value={groups.retail.length} />
         <Stat label="Manufacturers" value={myManufacturers.filter(c => c.active).length} hint={`${partners.data?.length ?? '…'} retailers licensed`} />
       </div>
@@ -152,7 +157,7 @@ export default function Distributor() {
             actions={<Button variant="ghost" size="sm" onClick={() => { reloadAll(); partners.reload() }}>↻ Refresh</Button>}>
             <div style={{ marginBottom: 14 }}>
               <FilterChips value={filter} onChange={setFilter} options={[
-                ['all', 'All', groups.all.length], ['stock', 'In stock', groups.stock.length], ['transit', 'In transit', groups.transit.length], ['retail', 'At retailers', groups.retail.length],
+                ['all', 'All', groups.all.length], ['stock', 'In stock', groups.stock.length], ['transit', 'In transit', groups.transit.length], ['returning', 'Returning', groups.returning.length], ['retail', 'At retailers', groups.retail.length],
               ]} />
             </div>
             {held.loading ? <Loading /> : held.error ? <Alert type="error">{held.error}</Alert>

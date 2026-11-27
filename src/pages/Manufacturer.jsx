@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { loadProducts, loadRequestsFor, reader } from '../lib/chain'
 import { uploadJSON } from '../lib/ipfs'
 import { useLoad, useSession, useTx } from '../lib/app'
-import { ALL_PUBLIC, PRODUCT_LIMITS, PUBLIC_FIELDS, sameAddr, validateProduct } from '../lib/format'
+import { ALL_PUBLIC, KIND, PRODUCT_LIMITS, PUBLIC_FIELDS, sameAddr, validateProduct } from '../lib/format'
 import { Alert, Button, Card, Empty, Field, Loading, Stat, Tabs } from '../components/ui'
 import { PageHead } from '../components/Layout'
 import { LicenceApply, LicenceBanner, LicencePanel, useActiveLicensees, useStanding } from '../components/Licences'
@@ -35,10 +35,12 @@ export default function Manufacturer() {
   const requests = useLoad(() => loadRequestsFor(s.address), [s.address])
   const list = products.data || []
   const mine = p => sameAddr(p.holder, s.address)
+  const isReturn = p => p.status === 1 && p.last?.kind === KIND.RETURN
   const groups = {
     all: list.filter(p => p.status !== 3),
     stock: list.filter(p => p.status === 0 && mine(p)),
-    transit: list.filter(p => p.status === 1),
+    transit: list.filter(p => p.status === 1 && !isReturn(p)),
+    returning: list.filter(isReturn),
     downstream: list.filter(p => p.status === 0 && !mine(p)),
     delivered: list.filter(p => p.status === 2),
     deleted: list.filter(p => p.status === 3),
@@ -130,8 +132,9 @@ export default function Manufacturer() {
       <div className="grid grid-stats" style={{ marginBottom: 20 }}>
         <Stat label="In stock" value={groups.stock.length} />
         <Stat label="In transit" value={groups.transit.length} />
+        <Stat label="Returning" value={groups.returning.length} hint="being sent back to you" />
         <Stat label="With partners" value={groups.downstream.length + groups.delivered.length} hint={`${groups.delivered.length} delivered to retailers`} />
-        <Stat label="Returns waiting" value={incoming.data?.length ?? '…'} />
+        <Stat label="Returns waiting" value={incoming.data?.length ?? '…'} hint="accept on Returns tab" />
         <Stat label="Active distributors" value={partners.data?.length ?? '…'} />
       </div>
 
@@ -194,7 +197,7 @@ export default function Manufacturer() {
             <Card title="Your products" bodyClass="" actions={<Button variant="ghost" size="sm" onClick={() => { reloadAll(); partners.reload() }}>↻ Refresh</Button>}>
               <div style={{ marginBottom: 14 }}>
                 <FilterChips value={filter} onChange={setFilter} options={[
-                  ['all', 'All', groups.all.length], ['stock', 'In stock', groups.stock.length], ['transit', 'In transit', groups.transit.length],
+                  ['all', 'All', groups.all.length], ['stock', 'In stock', groups.stock.length], ['transit', 'In transit', groups.transit.length], ['returning', 'Returning', groups.returning.length],
                   ['downstream', 'At distributor', groups.downstream.length], ['delivered', 'Delivered', groups.delivered.length], ['deleted', 'Deleted', groups.deleted.length],
                 ]} />
               </div>
@@ -203,10 +206,12 @@ export default function Manufacturer() {
                 : shown.map(p => (
                   <ProductItem key={p.id} p={p} actions={actionsFor(p)}
                     warn={rc.data?.[p.id]?.ok ? rc.data[p.id].reason : null}
-                    foot={p.status === 0 && mine(p) && (<>
-                      <ShipForm product={p} partners={partners.data || []} partnerLabel="Distributor" onShipped={reloadAll} />
-                      {Number(p.quantity) > 1 && <SplitForm product={p} onSplit={reloadAll} />}
-                    </>)} />
+                    foot={p.status === 0 && mine(p) && (
+                      <div className="foot-actions">
+                        <ShipForm product={p} partners={partners.data || []} partnerLabel="Distributor" onShipped={reloadAll} />
+                        {Number(p.quantity) > 1 && <SplitForm product={p} onSplit={reloadAll} />}
+                      </div>
+                    )} />
                 ))}
             </Card>
           </div>

@@ -97,26 +97,35 @@ export function ShipForm({ product, partners, partnerLabel, onShipped }) {
   )
 }
 
-/** Split a product into two (four-level packaging). */
+/** Split a product into two (four-level packaging). Collapsible to reduce clutter. */
 export function SplitForm({ product, onSplit }) {
   const s = useSession()
   const { run, busy } = useTx()
+  const [open, setOpen] = useState(false)
   const [qty, setQty] = useState('')
   const max = Number(product.quantity) - 1
   const n = Number(qty)
   const valid = n >= 1 && n <= max && Number.isInteger(n)
+  const error = qty !== '' && !valid
+    ? (n > max ? `Max ${max} (product has ${product.quantity} units)` : n < 1 ? 'Enter at least 1' : !Number.isInteger(n) ? 'Whole numbers only' : '')
+    : ''
   const key = 'split:' + product.id
+  if (!open) return <div className="split-hint"><Button variant="ghost" size="sm" onClick={() => setOpen(true)}>✂ Split quantity</Button><span className="small muted">Ship sends all {product.quantity} units. Split first to send a portion.</span></div>
   return (
-    <div className="ship-row">
-      <input className="input" type="number" min="1" max={max} step="1" placeholder={`Split off 1-${max} units…`}
-        value={qty} onChange={e => setQty(e.target.value)} style={{ maxWidth: 200 }} />
-      <Button variant="secondary" disabled={!valid || !!busy} loading={busy === key}
-        onClick={() => run(key, () => s.write.pt.splitProduct(product.id, n), {
-          success: `Split ${n} unit${n > 1 ? 's' : ''} from "${product.name}" into a new product.`,
-          onDone: async () => { setQty(''); await onSplit?.() },
-        })}>
-        Split
-      </Button>
+    <div className="split-form">
+      <div className="ship-row">
+        <input className={`input${error ? ' invalid' : ''}`} type="number" min="1" max={max} step="1" placeholder={`Split off 1-${max} units`}
+          value={qty} onChange={e => setQty(e.target.value)} style={{ maxWidth: 200 }} />
+        <Button variant="secondary" disabled={!valid || !!busy} loading={busy === key}
+          onClick={() => run(key, () => s.write.pt.splitProduct(product.id, n), {
+            success: `Split ${n} unit${n > 1 ? 's' : ''} from "${product.name}" into a new product.`,
+            onDone: async () => { setQty(''); setOpen(false); await onSplit?.() },
+          })}>
+          Split
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => { setOpen(false); setQty('') }}>Cancel</Button>
+      </div>
+      {error && <span className="field-error">{error}</span>}
     </div>
   )
 }

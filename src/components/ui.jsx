@@ -100,6 +100,7 @@ export function Tabs({ tabs, value, onChange }) {
         <button key={t.id} role="tab" className={`tab${value === t.id ? ' active' : ''}`} onClick={() => onChange(t.id)}>
           {t.icon && <span>{t.icon}</span>}{t.label}
           {t.count != null && <span className="tab-count">{t.count}</span>}
+          {t.badge > 0 && <span className="tab-badge">{t.badge}</span>}
         </button>
       ))}
     </div>

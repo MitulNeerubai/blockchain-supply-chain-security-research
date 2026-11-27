@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { loadProducts, reader } from '../lib/chain'
+import { loadProducts, loadRequestsFor, reader } from '../lib/chain'
 import { uploadJSON } from '../lib/ipfs'
 import { useLoad, useSession, useTx } from '../lib/app'
 import { ALL_PUBLIC, PRODUCT_LIMITS, PUBLIC_FIELDS, sameAddr, validateProduct } from '../lib/format'
@@ -32,6 +32,7 @@ export default function Manufacturer() {
   const [ipfsWarn, setIpfsWarn] = useState('')
 
   const products = useLoad(async () => loadProducts(await reader().pt.getManufacturerProducts(s.address)), [s.address])
+  const requests = useLoad(() => loadRequestsFor(s.address), [s.address])
   const list = products.data || []
   const mine = p => sameAddr(p.holder, s.address)
   const groups = {
@@ -137,7 +138,7 @@ export default function Manufacturer() {
       <Tabs value={tab} onChange={setTab} tabs={[
         { id: 'products', label: 'Products', icon: '📦', count: groups.all.length },
         { id: 'returns', label: 'Returns', icon: '↩', count: incoming.data?.length },
-        { id: 'partners', label: 'Distributors', icon: '🚚', count: partners.data?.length },
+        { id: 'partners', label: 'Distributors', icon: '🚚', count: partners.data?.length, badge: requests.data?.length || 0 },
         { id: 'lookup', label: 'Product lookup', icon: '🔍' },
         { id: 'email', label: 'Notifications', icon: '📧' },
       ]} />

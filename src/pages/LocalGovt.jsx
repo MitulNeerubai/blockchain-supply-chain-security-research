@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useNetwork, useSession } from '../lib/app'
+import { loadRequestsFor } from '../lib/chain'
+import { useLoad, useNetwork, useSession } from '../lib/app'
 import { Card, Tabs } from '../components/ui'
 import { PageHead } from '../components/Layout'
 import { LicenceBanner, LicencePanel, useStanding } from '../components/Licences'
@@ -12,6 +13,7 @@ export default function LocalGovt() {
   const s = useSession()
   const net = useNetwork()
   const standing = useStanding()
+  const requests = useLoad(() => loadRequestsFor(s.address), [s.address])
   const [tab, setTab] = useState('mf')
   const facts = { loading: standing.loading, licensed: !!standing.data?.ok, issued: net.issued(s.address).length }
   return (
@@ -19,7 +21,7 @@ export default function LocalGovt() {
       <PageHead session={s} title={s.company} subtitle={s.region ? `Local Government · ${s.region}` : undefined} />
       <div style={{ marginBottom: 20 }}><LicenceBanner standing={standing} /></div>
       <Tabs value={tab} onChange={setTab} tabs={[
-        { id: 'mf', label: 'Manufacturers', icon: '🏭' },
+        { id: 'mf', label: 'Manufacturers', icon: '🏭', badge: requests.data?.length || 0 },
         { id: 'tree', label: 'Trust map', icon: '🌳' },
         { id: 'lookup', label: 'Product lookup', icon: '🔍' },
         { id: 'email', label: 'Notifications', icon: '📧' },

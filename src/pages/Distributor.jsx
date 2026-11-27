@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { loadProducts, reader } from '../lib/chain'
+import { loadProducts, loadRequestsFor, reader } from '../lib/chain'
 import { useDirectory, useLoad, useNetwork, useSession, useTx } from '../lib/app'
 import { sameAddr } from '../lib/format'
 import { Alert, Button, Card, Empty, Entity, Loading, Stat, Tabs } from '../components/ui'
@@ -26,6 +26,7 @@ export default function Distributor() {
   const [filter, setFilter] = useState('all')
 
   const held = useLoad(async () => loadProducts(await reader().pt.getHolderProducts(s.address)), [s.address])
+  const requests = useLoad(() => loadRequestsFor(s.address), [s.address])
   const list = held.data || []
   const mine = p => sameAddr(p.holder, s.address)
   const groups = {
@@ -132,7 +133,7 @@ export default function Distributor() {
       <Tabs value={tab} onChange={setTab} tabs={[
         { id: 'incoming', label: 'Incoming', icon: '📬', count: incoming.data?.length },
         { id: 'inventory', label: 'Inventory', icon: '📦', count: groups.all.length },
-        { id: 'partners', label: 'Retailers', icon: '🏪', count: partners.data?.length },
+        { id: 'partners', label: 'Retailers', icon: '🏪', count: partners.data?.length, badge: requests.data?.length || 0 },
         { id: 'lookup', label: 'Product lookup', icon: '🔍' },
         { id: 'email', label: 'Notifications', icon: '📧' },
       ]} />
